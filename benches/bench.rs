@@ -1,71 +1,63 @@
 use std::env;
 use std::fs;
 use std::os::unix::prelude::*;
+use std::path::Path;
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-
-use realpath::realpath_raw;
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
 fn bench(c: &mut Criterion) {
     let exe = env::current_exe().unwrap();
     let cwd = env::current_dir().unwrap();
 
     let mut buf = [0; libc::PATH_MAX as usize];
-    c.bench_function("realpath_raw dot", |b| {
-        b.iter(|| {
-            let n = realpath_raw(b".", &mut buf).unwrap();
-            black_box(&buf[..n]);
-        })
-    });
 
-    c.bench_function("fs::canonicalize dot", |b| {
-        b.iter(|| {
-            let path = fs::canonicalize(".").unwrap();
-            black_box(path);
-        })
-    });
+    let mut group = c.benchmark_group("realpath");
 
-    c.bench_function("realpath_raw /bin", |b| {
-        b.iter(|| {
-            let n = realpath_raw(b"/bin", &mut buf).unwrap();
-            black_box(&buf[..n]);
-        })
-    });
+    for (ident, path) in [
+        ("root", "/".as_ref()),
+        ("dot", ".".as_ref()),
+        ("2-parent", "../../".as_ref()),
+        ("bin", "/bin".as_ref()),
+        ("bin (dir)", "/bin/".as_ref()),
+        ("exe", exe.as_ref()),
+        ("cwd", cwd.as_ref()),
+    ]
+    .iter()
+    {
+        let path = Path::as_os_str(*path);
 
-    c.bench_function("fs::canonicalize /bin", |b| {
-        b.iter(|| {
-            let path = fs::canonicalize("/bin").unwrap();
-            black_box(path);
-        })
-    });
+        group.bench_with_input(
+            BenchmarkId::new("realpath::realpath_raw", ident),
+            path,
+            |b, i| {
+                b.iter(|| {
+                    let n = realpath::realpath_raw(i.as_bytes(), &mut buf).unwrap();
+                    black_box(&buf[..n]);
+                })
+            },
+        );
 
-    c.bench_function("realpath_raw exe", |b| {
-        b.iter(|| {
-            let n = realpath_raw(exe.as_os_str().as_bytes(), &mut buf).unwrap();
-            black_box(&buf[..n]);
-        })
-    });
+        #[cfg(feature = "std")]
+        group.bench_with_input(
+            BenchmarkId::new("realpath::realpath", ident),
+            path,
+            |b, i| {
+                b.iter(|| {
+                    let path = realpath::realpath(i).unwrap();
+                    black_box(path);
+                })
+            },
+        );
 
-    c.bench_function("fs::canonicalize exe", |b| {
-        b.iter(|| {
-            let path = fs::canonicalize(&exe).unwrap();
-            black_box(path);
-        })
-    });
+        group.bench_with_input(BenchmarkId::new("fs::canonicalize", ident), path, |b, i| {
+            b.iter(|| {
+                let path = fs::canonicalize(i).unwrap();
+                black_box(path);
+            })
+        });
+    }
 
-    c.bench_function("realpath_raw cwd", |b| {
-        b.iter(|| {
-            let n = realpath_raw(cwd.as_os_str().as_bytes(), &mut buf).unwrap();
-            black_box(&buf[..n]);
-        })
-    });
-
-    c.bench_function("fs::canonicalize cwd", |b| {
-        b.iter(|| {
-            let path = fs::canonicalize(&cwd).unwrap();
-            black_box(path);
-        })
-    });
+    group.finish();
 }
 
 criterion_group!(benches, bench);

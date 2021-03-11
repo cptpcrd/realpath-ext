@@ -1,14 +1,32 @@
-//#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 use tinyvec::SliceVec;
 
 mod util;
 
-use util::{ComponentIter, SymlinkCounter};
+use util::{ComponentStack, SymlinkCounter};
+
+#[cfg(feature = "std")]
+pub fn realpath<P: AsRef<std::path::Path>>(path: P) -> std::io::Result<std::path::PathBuf> {
+    use std::os::unix::prelude::*;
+
+    let mut buf = Vec::with_capacity(libc::PATH_MAX as usize);
+    unsafe {
+        std::ptr::write_bytes(buf.as_mut_ptr(), 0, buf.capacity());
+        buf.set_len(buf.capacity());
+    }
+
+    let len = realpath_raw(path.as_ref().as_os_str().as_bytes(), &mut buf)
+        .map_err(std::io::Error::from_raw_os_error)?;
+    buf.truncate(len);
+
+    Ok(std::ffi::OsString::from_vec(buf).into())
+}
 
 pub fn realpath_raw(path: &[u8], buf: &mut [u8]) -> Result<usize, i32> {
-    let mut tmp = [0; libc::PATH_MAX as usize + 1];
-    let mut tmp = SliceVec::from_slice_len(&mut tmp, 0);
+    let mut stack = [0; libc::PATH_MAX as usize + 100];
+    let mut stack = ComponentStack::new(&mut stack);
+    stack.push(path)?;
 
     let mut buf = SliceVec::from_slice_len(buf, 0);
     util::sv_reserve(&mut buf, 1)?;
@@ -16,16 +34,16 @@ pub fn realpath_raw(path: &[u8], buf: &mut [u8]) -> Result<usize, i32> {
 
     let mut links = SymlinkCounter::new();
 
-    realpath_into(path, &mut buf, &mut tmp, &mut links)?;
+    realpath_into(&mut buf, &mut stack, &mut links)?;
 
     let mut isdir = false;
 
+    let mut tmp = SliceVec::from_slice_len(stack.clear(), 0);
+
     if buf.as_ref() == b"." {
-        buf.clear();
         util::getcwd(&mut buf)?;
         isdir = true;
     } else if buf.as_ref() == b".." {
-        buf.clear();
         util::getcwd(&mut buf)?;
         util::sv_parent(&mut buf)?;
         isdir = true;
@@ -72,12 +90,11 @@ pub fn realpath_raw(path: &[u8], buf: &mut [u8]) -> Result<usize, i32> {
 }
 
 fn realpath_into(
-    path: &[u8],
     buf: &mut SliceVec<u8>,
-    tmp: &mut SliceVec<u8>,
+    stack: &mut ComponentStack,
     links: &mut SymlinkCounter,
 ) -> Result<(), i32> {
-    for component in ComponentIter::new(path)? {
+    while let Some(component) = stack.next() {
         debug_assert!(!buf.is_empty());
 
         if component == b"/" {
@@ -97,23 +114,13 @@ fn realpath_into(
             buf.extend_from_slice(component);
             buf.push(b'\0');
 
-            tmp.set_len(tmp.capacity());
-
-            match unsafe { util::readlink(buf.as_ptr(), tmp) } {
-                Ok(n) => {
+            match unsafe { stack.push_readlink(buf.as_ptr()) } {
+                Ok(()) => {
                     links.advance()?;
-
-                    let target = &tmp[..n];
-                    if target.first() == Some(&b'/') {
-                        buf.truncate(1);
-                    }
-
-                    let (target, rest) = tmp.split_at_mut(n);
                     buf.set_len(oldlen);
-                    realpath_into(target, buf, &mut SliceVec::from_slice_len(rest, 0), links)?;
                 }
 
-                // Not a symlink; just discard the trailing NUL
+                // Not a symlink; just remove the trailing NUL
                 Err(libc::EINVAL) => drop(buf.pop()),
 
                 Err(eno) => return Err(eno),
