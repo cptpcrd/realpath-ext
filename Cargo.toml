@@ -1,0 +1,17 @@
+[package]
+name = "realpath"
+version = "0.1.0"
+edition = "2018"
+
+authors = ["cptpcrd"]
+
+[dependencies]
+libc = { version = "0.2", default-features = false }
+tinyvec = { version = "1.1", default-features = false, features = ["grab_spare_slice"] }
+
+[dev-dependencies]
+criterion = "0.3"
+
+[[bench]]
+name = "bench"
+harness = false

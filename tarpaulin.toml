@@ -1,0 +1,4 @@
+[default_coverage]
+
+[report]
+out = ["Html"]
