@@ -45,6 +45,14 @@ pub fn normpath<P: AsRef<std::path::Path>>(path: P) -> std::io::Result<std::path
 /// let n = normpath_raw(b"/a/b/./c/../", &mut buf).unwrap();
 /// assert_eq!(&buf[..n], b"/a/b");
 /// ```
+///
+/// # Errors
+///
+/// This function may fail with the following errors:
+///
+/// - `ENAMETOOLONG`: The given `buf` is not long enough to store the normalized path.
+/// - `ENOENT`: The given `path` is empty.
+/// - `EINVAL`: The given `path` contains a NUL byte (not allowed in \*nix paths).
 pub fn normpath_raw(path: &[u8], buf: &mut [u8]) -> Result<usize, i32> {
     let mut buf = SliceVec::empty(buf);
 
@@ -119,6 +127,27 @@ pub fn realpath<P: AsRef<std::path::Path>>(
 /// let n = realpath_raw(b"///", &mut buf, RealpathFlags::empty()).unwrap();
 /// assert_eq!(&buf[..n], b"/");
 /// ```
+///
+/// # Errors
+///
+/// This function may fail with the following errors:
+///
+/// - `ENAMETOOLONG`: Either:
+///    1. The given `buf` is not long enough to store the canonicalized path, or
+///    2. An intermediate result created by combining the original `path` and any symbolic link
+///       paths exceeded the system `PATH_MAX`. (Note that the actual limit is slightly higher than
+///       `PATH_MAX` to account for storage overhead; this should not be relied upon.)
+/// - `EINVAL`: The given `path` contains a NUL byte (not allowed in \*nix paths).
+/// - `ELOOP`: Too many symbolic links were encounted during resolution.
+///
+///   This function will use `sysconf()` to check the system's `SYMLOOP_MAX` value to determine
+///   the limit. If that fails (for example, it always fails on glibc), this function will fall
+///   back on a limit of 40 (which is Linux's limit).
+/// - `ENOENT`/`EACCES`/`ENOTDIR`: The given `path` (or a component of it) does not exist, is
+///   inaccessible, or is not a directory (respectively).
+///
+///   (Note that these errors may be ignored depending on the specified `flags`.)
+/// - `EIO`: An I/O error occurred while interacting with the filesystem.
 pub fn realpath_raw(path: &[u8], buf: &mut [u8], flags: RealpathFlags) -> Result<usize, i32> {
     let mut stack = [0; libc::PATH_MAX as usize + 100];
     let mut stack = ComponentStack::new(&mut stack);
