@@ -210,6 +210,8 @@ pub fn getcwd(buf: &mut SliceVec<u8>) -> Result<(), i32> {
         Err(libc::ENAMETOOLONG)
     } else if unsafe { libc::getcwd(buf.as_mut_ptr() as *mut _, buf.len()) }.is_null() {
         Err(errno_get())
+    } else if buf[0] != b'/' {
+        Err(libc::ENOENT)
     } else {
         buf.set_len(buf.iter().position(|&ch| ch == 0).unwrap());
         Ok(())
