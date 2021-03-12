@@ -55,9 +55,8 @@ impl<'a> SliceVec<'a> {
     }
 
     #[inline]
-    pub fn pop(&mut self) -> Option<u8> {
-        self.len = self.len.checked_sub(1)?;
-        Some(self.buf[self.len])
+    pub fn pop(&mut self) {
+        self.len = self.len.saturating_sub(1);
     }
 
     #[inline]
@@ -73,8 +72,13 @@ impl<'a> SliceVec<'a> {
 
     #[inline]
     pub fn replace(&mut self, src: &[u8]) -> Result<(), i32> {
-        self.clear();
-        self.extend_from_slice(src)
+        if let Some(dest) = self.buf.get_mut(..src.len()) {
+            self.len = src.len();
+            dest.copy_from_slice(src);
+            Ok(())
+        } else {
+            Err(libc::ENAMETOOLONG)
+        }
     }
 
     #[inline]
@@ -186,8 +190,6 @@ mod tests {
         buf.push(b'g').unwrap();
         assert_eq!(buf.as_ref(), b"abdefcg");
 
-        assert_eq!(buf.pop(), Some(b'g'));
-
         buf.replace(b"hijklmn").unwrap();
         assert_eq!(buf.as_ref(), b"hijklmn");
 
@@ -200,6 +202,13 @@ mod tests {
         buf.clear();
         buf.insert_from_slice(0, b"opq").unwrap();
         assert_eq!(buf.as_ref(), b"opq");
+
+        buf.pop();
+        assert_eq!(buf.as_ref(), b"op");
+        buf.pop();
+        assert_eq!(buf.as_ref(), b"o");
+        buf.pop();
+        assert_eq!(buf.as_ref(), b"");
     }
 
     #[test]
@@ -217,13 +226,18 @@ mod tests {
             libc::ENAMETOOLONG
         );
 
-        assert_eq!(buf.pop().unwrap(), b'c');
+        buf.pop();
 
         assert_eq!(
             buf.insert_from_slice(2, b"de").unwrap_err(),
             libc::ENAMETOOLONG
         );
         buf.insert_from_slice(2, b"d").unwrap();
+
+        assert_eq!(buf.replace(b"abcd").unwrap_err(), libc::ENAMETOOLONG);
+        assert_eq!(buf.as_ref(), b"abd");
+        buf.replace(b"efg").unwrap();
+        assert_eq!(buf.as_ref(), b"efg");
     }
 
     #[test]
