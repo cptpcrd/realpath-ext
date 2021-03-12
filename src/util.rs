@@ -77,6 +77,24 @@ impl<'a> ComponentStack<'a> {
         } else if path.contains(&0) {
             Err(libc::EINVAL)
         } else {
+            let path = match strip_trailing_slashes(path) {
+                // The path is entirely slashes; use 1 or 2 slashes as appropriate
+                b"" => {
+                    if path.len() == 2 {
+                        b"//".as_ref()
+                    } else {
+                        b"/".as_ref()
+                    }
+                }
+
+                // Use the new path
+                p => p,
+            };
+
+            // If the stack isn't empty, we need to add a NUL byte as "padding".
+            // The exception is that we don't have to do this if a) the first path on the stack
+            // doesn't start with `/` AND b) the path that we're trying to push onto the stack ends
+            // with `/` (because the `/` will insulate it).
             if self.i != self.buf.len() {
                 self.i -= 1;
                 self.buf[self.i] = 0;
@@ -324,6 +342,13 @@ pub fn strip_leading_slashes(mut s: &[u8]) -> &[u8] {
     s
 }
 
+pub fn strip_trailing_slashes(mut s: &[u8]) -> &[u8] {
+    while let Some((&b'/', rest)) = s.split_last() {
+        s = rest;
+    }
+    s
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -352,6 +377,22 @@ mod tests {
     }
 
     #[test]
+    fn test_strip_trailing_slashes() {
+        assert_eq!(strip_trailing_slashes(b""), b"");
+        assert_eq!(strip_trailing_slashes(b"/"), b"");
+        assert_eq!(strip_trailing_slashes(b"//"), b"");
+
+        assert_eq!(strip_trailing_slashes(b"abc"), b"abc");
+        assert_eq!(strip_trailing_slashes(b"abc/"), b"abc");
+        assert_eq!(strip_trailing_slashes(b"abc/def"), b"abc/def");
+
+        assert_eq!(strip_trailing_slashes(b"/abc"), b"/abc");
+        assert_eq!(strip_trailing_slashes(b"/abc/"), b"/abc");
+        assert_eq!(strip_trailing_slashes(b"/abc/def/"), b"/abc/def");
+        assert_eq!(strip_trailing_slashes(b"//abc/def//"), b"//abc/def");
+    }
+
+    #[test]
     fn test_component_stack() {
         let mut buf = [0; 100];
         let mut stack = ComponentStack::new(&mut buf);
@@ -368,9 +409,13 @@ mod tests {
         stack.push(b"///abc/./def/").unwrap();
         stack.push(b"ghi/").unwrap();
         stack.push(b"/jkl").unwrap();
+        stack.push(b"mno").unwrap();
+        stack.push(b"pqr/").unwrap();
 
         assert_eq!(stack.push(&[b'a'; 101]).unwrap_err(), libc::ENAMETOOLONG);
 
+        assert_eq!(stack.next().unwrap(), b"pqr");
+        assert_eq!(stack.next().unwrap(), b"mno");
         assert_eq!(stack.next().unwrap(), b"/");
         assert_eq!(stack.next().unwrap(), b"jkl");
         assert_eq!(stack.next().unwrap(), b"ghi");
