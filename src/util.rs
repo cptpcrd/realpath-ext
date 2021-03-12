@@ -14,6 +14,17 @@ pub fn errno_get() -> i32 {
     unsafe { *errno_ptr() }
 }
 
+#[cfg(feature = "std")]
+pub fn zeroed_vec(len: usize) -> Vec<u8> {
+    // This is equivalent to vec![0; len], but it's faster
+    let mut buf = Vec::with_capacity(len);
+    unsafe {
+        std::ptr::write_bytes(buf.as_mut_ptr(), 0, buf.capacity());
+        buf.set_len(buf.capacity());
+    }
+    buf
+}
+
 #[derive(Debug)]
 pub struct SymlinkCounter {
     max: u16,
@@ -218,6 +229,12 @@ pub fn getcwd(buf: &mut SliceVec) -> Result<(), i32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_zeroed_vec() {
+        let buf = zeroed_vec(100);
+        assert_eq!(buf, vec![0; buf.len()]);
+    }
 
     #[test]
     fn test_component_stack() {

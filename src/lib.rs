@@ -10,11 +10,7 @@ use util::{ComponentStack, SymlinkCounter};
 pub fn realpath<P: AsRef<std::path::Path>>(path: P) -> std::io::Result<std::path::PathBuf> {
     use std::os::unix::prelude::*;
 
-    let mut buf = Vec::with_capacity(libc::PATH_MAX as usize);
-    unsafe {
-        std::ptr::write_bytes(buf.as_mut_ptr(), 0, buf.capacity());
-        buf.set_len(buf.capacity());
-    }
+    let mut buf = util::zeroed_vec(libc::PATH_MAX as usize);
 
     let len = realpath_raw(path.as_ref().as_os_str().as_bytes(), &mut buf)
         .map_err(std::io::Error::from_raw_os_error)?;
