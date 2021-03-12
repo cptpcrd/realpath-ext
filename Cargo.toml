@@ -12,7 +12,6 @@ std = []
 
 [dependencies]
 libc = { version = "0.2", default-features = false }
-tinyvec = { version = "1.1", default-features = false }
 
 [dev-dependencies]
 criterion = "0.3"

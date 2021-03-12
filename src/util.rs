@@ -1,4 +1,4 @@
-use tinyvec::SliceVec;
+use crate::slicevec::SliceVec;
 
 #[cfg(any(target_os = "linux", target_os = "dragonfly"))]
 pub use libc::__errno_location as errno_ptr;
@@ -51,10 +51,7 @@ pub struct ComponentStack<'a> {
 impl<'a> ComponentStack<'a> {
     #[inline]
     pub fn new(buf: &'a mut [u8]) -> Self {
-        Self {
-            i: buf.len(),
-            buf: buf,
-        }
+        Self { i: buf.len(), buf }
     }
 
     #[inline]
@@ -203,7 +200,7 @@ pub unsafe fn check_isdir(path: *const u8) -> Result<(), i32> {
     }
 }
 
-pub fn getcwd(buf: &mut SliceVec<u8>) -> Result<(), i32> {
+pub fn getcwd(buf: &mut SliceVec) -> Result<(), i32> {
     buf.set_len(buf.capacity());
 
     if buf.is_empty() {
@@ -215,86 +212,6 @@ pub fn getcwd(buf: &mut SliceVec<u8>) -> Result<(), i32> {
     } else {
         buf.set_len(buf.iter().position(|&ch| ch == 0).unwrap());
         Ok(())
-    }
-}
-
-#[inline]
-pub fn sv_reserve(s: &SliceVec<u8>, extra: usize) -> Result<(), i32> {
-    if s.capacity() - s.len() >= extra {
-        Ok(())
-    } else {
-        Err(libc::ENAMETOOLONG)
-    }
-}
-
-#[inline]
-pub fn sv_setlen(s: &mut SliceVec<u8>, len: usize) -> Result<(), i32> {
-    if s.capacity() >= len {
-        s.set_len(len);
-        Ok(())
-    } else {
-        Err(libc::ENAMETOOLONG)
-    }
-}
-
-pub fn sv_parent(s: &mut SliceVec<u8>) -> Result<(), i32> {
-    if s.as_ref() == b".." || s.as_ref().ends_with(b"/..") {
-        sv_reserve(s, 3)?;
-        s.extend_from_slice(b"/..");
-        return Ok(());
-    } else if s.as_ref() == b"." {
-        sv_reserve(s, 1)?;
-        s.push(b'.');
-        return Ok(());
-    }
-
-    match s.iter().rposition(|&ch| ch == b'/') {
-        // Only one slash!
-        Some(0) => s.truncate(1),
-
-        Some(i) => {
-            // It should NOT end with a slash
-            debug_assert_ne!(i, s.len() - 1);
-            s.truncate(i);
-        }
-
-        // No slashes!
-        None => {
-            debug_assert!(!matches!(s.as_ref(), b"."));
-            s.clear();
-            sv_setlen(s, 1)?;
-            s[0] = b'.';
-        }
-    }
-
-    Ok(())
-}
-
-pub fn sv_insert(buf: &mut SliceVec<u8>, i: usize, extra: &[u8]) -> Result<(), i32> {
-    if extra.is_empty() {
-        return Ok(());
-    }
-
-    let buflen = buf.len();
-    let extralen = extra.len();
-    sv_setlen(buf, buflen + extralen)?;
-
-    buf.copy_within(i..buflen, i + extralen);
-
-    buf[i..extralen + i].copy_from_slice(extra);
-
-    Ok(())
-}
-
-pub fn sv_prepend(buf: &mut SliceVec<u8>, extra: &[u8]) -> Result<(), i32> {
-    sv_insert(buf, 0, extra)
-}
-
-pub fn sv_strip_nfront(buf: &mut SliceVec<u8>, n: usize) {
-    if n > 0 {
-        let len = buf.len();
-        buf.copy_within(n..len, 0);
-        buf.set_len(buf.len() - n);
     }
 }
 
@@ -328,127 +245,5 @@ mod tests {
         assert_eq!(stack.next().unwrap(), b"def");
         assert_eq!(stack.next().unwrap(), b"/");
         assert_eq!(stack.next().unwrap(), b"/");
-    }
-
-    #[test]
-    fn test_sv_parent() {
-        let mut buf = [0; 100];
-        let mut buf = SliceVec::from_slice_len(&mut buf, 0);
-
-        buf.clear();
-        buf.extend_from_slice(b".");
-        sv_parent(&mut buf).unwrap();
-        assert_eq!(buf.as_ref(), b"..");
-
-        buf.clear();
-        buf.extend_from_slice(b"abc");
-        sv_parent(&mut buf).unwrap();
-        assert_eq!(buf.as_ref(), b".");
-
-        buf.clear();
-        buf.extend_from_slice(b"abc");
-        sv_parent(&mut buf).unwrap();
-        assert_eq!(buf.as_ref(), b".");
-
-        buf.clear();
-        buf.extend_from_slice(b"/abc/def");
-        sv_parent(&mut buf).unwrap();
-        assert_eq!(buf.as_ref(), b"/abc");
-
-        buf.clear();
-        buf.extend_from_slice(b"/abc");
-        sv_parent(&mut buf).unwrap();
-        assert_eq!(buf.as_ref(), b"/");
-
-        buf.clear();
-        buf.extend_from_slice(b"/");
-        sv_parent(&mut buf).unwrap();
-        assert_eq!(buf.as_ref(), b"/");
-
-        buf.clear();
-        buf.extend_from_slice(b"..");
-        sv_parent(&mut buf).unwrap();
-        assert_eq!(buf.as_ref(), b"../..");
-
-        buf.clear();
-        buf.extend_from_slice(b"../..");
-        sv_parent(&mut buf).unwrap();
-        assert_eq!(buf.as_ref(), b"../../..");
-    }
-
-    #[test]
-    fn test_sv_reserve() {
-        let mut buf = [0; 10];
-        let buf = SliceVec::from_slice_len(&mut buf, 0);
-
-        sv_reserve(&buf, 0).unwrap();
-        sv_reserve(&buf, 10).unwrap();
-        sv_reserve(&buf, 11).unwrap_err();
-    }
-
-    #[test]
-    fn test_sv_setlen() {
-        let mut buf = [0; 10];
-        let mut buf = SliceVec::from_slice_len(&mut buf, 0);
-
-        sv_setlen(&mut buf, 0).unwrap();
-        sv_setlen(&mut buf, 10).unwrap();
-        sv_setlen(&mut buf, 11).unwrap_err();
-    }
-
-    #[test]
-    fn test_sv_insert() {
-        let mut buf = [0; 10];
-        let mut buf = SliceVec::from_slice_len(&mut buf, 0);
-
-        buf.clear();
-        sv_insert(&mut buf, 0, b"abc").unwrap();
-        assert_eq!(buf.as_ref(), b"abc");
-
-        buf.clear();
-        buf.extend_from_slice(b"abc");
-        sv_insert(&mut buf, 0, b"").unwrap();
-        assert_eq!(buf.as_ref(), b"abc");
-
-        buf.clear();
-        buf.extend_from_slice(b"def");
-        sv_insert(&mut buf, 0, b"abc").unwrap();
-        assert_eq!(buf.as_ref(), b"abcdef");
-
-        buf.clear();
-        buf.extend_from_slice(b"abc");
-        sv_insert(&mut buf, 1, b"").unwrap();
-        assert_eq!(buf.as_ref(), b"abc");
-
-        buf.clear();
-        buf.extend_from_slice(b"def");
-        sv_insert(&mut buf, 1, b"abc").unwrap();
-        assert_eq!(buf.as_ref(), b"dabcef");
-
-        buf.clear();
-        buf.extend_from_slice(b"def");
-        sv_insert(&mut buf, 3, b"abc").unwrap();
-        assert_eq!(buf.as_ref(), b"defabc");
-    }
-
-    #[test]
-    fn test_sv_strip_nfront() {
-        let mut buf = [0; 10];
-        let mut buf = SliceVec::from_slice_len(&mut buf, 0);
-
-        buf.clear();
-        buf.extend_from_slice(b"abcdef");
-        sv_strip_nfront(&mut buf, 0);
-        assert_eq!(buf.as_ref(), b"abcdef");
-
-        buf.clear();
-        buf.extend_from_slice(b"abcdef");
-        sv_strip_nfront(&mut buf, 1);
-        assert_eq!(buf.as_ref(), b"bcdef");
-
-        buf.clear();
-        buf.extend_from_slice(b"abcdef");
-        sv_strip_nfront(&mut buf, 6);
-        assert_eq!(buf.as_ref(), b"");
     }
 }
