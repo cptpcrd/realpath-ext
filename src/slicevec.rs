@@ -300,4 +300,16 @@ mod tests {
         buf.make_parent_path().unwrap();
         assert_eq!(buf.as_ref(), b"../../..");
     }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn test_debug() {
+        let mut buf = [0; 20];
+        let mut buf = SliceVec::empty(&mut buf);
+
+        assert_eq!(format!("{:?}", buf), "[]");
+
+        buf.replace(&[0, 1, 2]).unwrap();
+        assert_eq!(format!("{:?}", buf), "[0, 1, 2]");
+    }
 }
