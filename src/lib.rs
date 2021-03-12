@@ -29,7 +29,37 @@ pub fn realpath_raw(path: &[u8], buf: &mut [u8]) -> Result<usize, i32> {
 
     let mut links = SymlinkCounter::new();
 
-    realpath_into(&mut buf, &mut stack, &mut links)?;
+    while let Some(component) = stack.next() {
+        debug_assert!(!buf.is_empty());
+
+        if component == b"/" {
+            buf.replace(b"/")?;
+        } else if component == b".." {
+            buf.make_parent_path()?;
+        } else {
+            let oldlen = buf.len();
+
+            if buf.as_ref() != b"/" {
+                buf.push(b'/')?;
+            }
+            buf.extend_from_slice(component)?;
+            buf.push(b'\0')?;
+
+            match unsafe { stack.push_readlink(buf.as_ptr()) } {
+                Ok(()) => {
+                    links.advance()?;
+                    buf.set_len(oldlen);
+                }
+
+                // Not a symlink; just remove the trailing NUL
+                Err(libc::EINVAL) => {
+                    buf.pop();
+                }
+
+                Err(eno) => return Err(eno),
+            }
+        }
+    }
 
     let mut isdir = false;
 
@@ -82,46 +112,6 @@ pub fn realpath_raw(path: &[u8], buf: &mut [u8]) -> Result<usize, i32> {
     }
 
     Ok(buf.len())
-}
-
-fn realpath_into(
-    buf: &mut SliceVec,
-    stack: &mut ComponentStack,
-    links: &mut SymlinkCounter,
-) -> Result<(), i32> {
-    while let Some(component) = stack.next() {
-        debug_assert!(!buf.is_empty());
-
-        if component == b"/" {
-            buf.replace(b"/")?;
-        } else if component == b".." {
-            buf.make_parent_path()?;
-        } else {
-            let oldlen = buf.len();
-
-            if buf.as_ref() != b"/" {
-                buf.push(b'/')?;
-            }
-            buf.extend_from_slice(component)?;
-            buf.push(b'\0')?;
-
-            match unsafe { stack.push_readlink(buf.as_ptr()) } {
-                Ok(()) => {
-                    links.advance()?;
-                    buf.set_len(oldlen);
-                }
-
-                // Not a symlink; just remove the trailing NUL
-                Err(libc::EINVAL) => {
-                    buf.pop();
-                }
-
-                Err(eno) => return Err(eno),
-            }
-        }
-    }
-
-    Ok(())
 }
 
 fn count_leading_dotdot(mut s: &[u8]) -> usize {
