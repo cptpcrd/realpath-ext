@@ -4,7 +4,69 @@ mod slicevec;
 mod util;
 
 use slicevec::SliceVec;
-use util::{ComponentStack, SymlinkCounter};
+use util::{ComponentIter, ComponentStack, SymlinkCounter};
+
+/// "Normalize" the given path.
+///
+/// This is a wrapper around [`normpath_raw()`] that allocates a buffer; see that function's
+/// documentation for details.
+#[cfg(feature = "std")]
+pub fn normpath<P: AsRef<std::path::Path>>(path: P) -> std::io::Result<std::path::PathBuf> {
+    use std::os::unix::prelude::*;
+
+    let path = path.as_ref().as_os_str().as_bytes();
+
+    let mut buf = util::zeroed_vec(path.len());
+
+    let len = normpath_raw(path, &mut buf).map_err(std::io::Error::from_raw_os_error)?;
+    buf.truncate(len);
+
+    Ok(std::ffi::OsString::from_vec(buf).into())
+}
+
+/// "Normalize" the given path.
+///
+/// Other than the differences described below, the `path` and `buf` arguments to this function,
+/// and the return values, have the same meaning as for [`realpath_raw()`].
+///
+/// This function was designed after Python's `os.path.normpath()`. It will remove `.` elements,
+/// condense extra slashes, and collapse `..` entries. Think of it as a version of
+/// [`realpath_raw()`] that doesn't actually touch the filesystem.
+///
+/// Note that because this function doesn't actually touch the filesystem, the returned path may
+/// not refer to the correct file! Certain combinations of `..` and/or symbolic links can cause
+/// this; the only way to get the definitive canonicalized path is to use [`realpath_raw()`].
+///
+/// Example usage:
+///
+/// ```
+/// # use realpath_ext::normpath_raw;
+/// let mut buf = [0; libc::PATH_MAX as usize];
+/// let n = normpath_raw(b"/a/b/./c/../", &mut buf).unwrap();
+/// assert_eq!(&buf[..n], b"/a/b");
+/// ```
+pub fn normpath_raw(path: &[u8], buf: &mut [u8]) -> Result<usize, i32> {
+    let mut buf = SliceVec::empty(buf);
+
+    for component in ComponentIter::new(path)? {
+        if component == b"/" {
+            buf.replace(b"/")?;
+        } else if component == b".." {
+            buf.make_parent_path()?;
+        } else {
+            if !matches!(buf.as_ref(), b"/" | b"") {
+                buf.push(b'/')?;
+            }
+            buf.extend_from_slice(component)?;
+        }
+    }
+
+    if buf.is_empty() {
+        buf.push(b'.')?;
+    }
+
+    Ok(buf.len())
+}
 
 bitflags::bitflags! {
     /// Flags that modify path resolution.
@@ -188,4 +250,50 @@ fn count_leading_dotdot(mut s: &[u8]) -> usize {
         s = &s[3..];
     }
     n
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_count_leading_dotdot() {
+        assert_eq!(count_leading_dotdot(b""), 0);
+        assert_eq!(count_leading_dotdot(b".."), 0);
+        assert_eq!(count_leading_dotdot(b"../a"), 1);
+        assert_eq!(count_leading_dotdot(b"../../a"), 2);
+        assert_eq!(count_leading_dotdot(b"../a/../b"), 1);
+    }
+
+    #[test]
+    fn test_normpath_raw() {
+        let mut buf = [0; 100];
+
+        let n = normpath_raw(b"/", &mut buf).unwrap();
+        assert_eq!(&buf[..n], b"/");
+
+        let n = normpath_raw(b".", &mut buf).unwrap();
+        assert_eq!(&buf[..n], b".");
+
+        let n = normpath_raw(b"a/..", &mut buf).unwrap();
+        assert_eq!(&buf[..n], b".");
+
+        let n = normpath_raw(b"//a/./b/../c/", &mut buf).unwrap();
+        assert_eq!(&buf[..n], b"/a/c");
+
+        assert_eq!(normpath_raw(b"", &mut buf).unwrap_err(), libc::ENOENT);
+        assert_eq!(normpath_raw(b"\0", &mut buf).unwrap_err(), libc::EINVAL);
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn test_normpath() {
+        assert_eq!(normpath("/").unwrap().as_os_str(), "/");
+        assert_eq!(normpath(".").unwrap().as_os_str(), ".");
+        assert_eq!(normpath("a/..").unwrap().as_os_str(), ".");
+        assert_eq!(normpath("//a/./b/../c/").unwrap().as_os_str(), "/a/c");
+
+        assert_eq!(normpath("").unwrap_err().raw_os_error(), Some(libc::ENOENT));
+        assert_eq!(normpath("\0").unwrap_err().raw_os_error(), Some(libc::EINVAL));
+    }
 }

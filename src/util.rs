@@ -205,6 +205,62 @@ impl<'a> ComponentStack<'a> {
     }
 }
 
+#[derive(Debug)]
+pub struct ComponentIter<'a>(&'a [u8]);
+
+impl<'a> ComponentIter<'a> {
+    #[inline]
+    pub fn new(path: &'a [u8]) -> Result<Self, i32> {
+        if path.is_empty() {
+            Err(libc::ENOENT)
+        } else if path.contains(&0) {
+            Err(libc::EINVAL)
+        } else {
+            Ok(Self(path))
+        }
+    }
+}
+
+impl<'a> Iterator for ComponentIter<'a> {
+    type Item = &'a [u8];
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.0.split_first() {
+            // Empty -> nothing left to iterate over
+            None => None,
+
+            // Starts with a slash -> trim leading slashes from the new path and return a slash
+            Some((&b'/', path)) => {
+                self.0 = strip_leading_slashes(path);
+                Some(&[b'/'])
+            }
+
+            // So it's not empty and it doesn't start with a slash
+            _ => loop {
+                let component = match self.0.iter().position(|&c| c == b'/') {
+                    // We were able to find a slash inside it
+                    // Return the part up to the slash, then strip the rest
+                    Some(index) => {
+                        let (component, rest) = self.0.split_at(index);
+                        self.0 = strip_leading_slashes(rest);
+                        component
+                    }
+
+                    // Exhausted
+                    None if self.0.is_empty() => break None,
+
+                    // No slashes -> only one component left
+                    None => core::mem::take(&mut self.0),
+                };
+
+                if component != b"." {
+                    break Some(component);
+                }
+            },
+        }
+    }
+}
+
 pub unsafe fn check_isdir(path: *const u8) -> Result<(), i32> {
     let mut buf = core::mem::MaybeUninit::uninit();
     if libc::stat(path as *const _, buf.as_mut_ptr()) < 0 {
@@ -240,6 +296,13 @@ pub fn getcwd(buf: &mut SliceVec) -> Result<(), i32> {
     }
 }
 
+pub fn strip_leading_slashes(mut s: &[u8]) -> &[u8] {
+    while let Some((&b'/', rest)) = s.split_first() {
+        s = rest;
+    }
+    s
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -249,6 +312,22 @@ mod tests {
     fn test_zeroed_vec() {
         let buf = zeroed_vec(100);
         assert_eq!(buf, vec![0; buf.len()]);
+    }
+
+    #[test]
+    fn test_strip_leading_slashes() {
+        assert_eq!(strip_leading_slashes(b""), b"");
+        assert_eq!(strip_leading_slashes(b"/"), b"");
+        assert_eq!(strip_leading_slashes(b"//"), b"");
+
+        assert_eq!(strip_leading_slashes(b"abc"), b"abc");
+        assert_eq!(strip_leading_slashes(b"abc/"), b"abc/");
+        assert_eq!(strip_leading_slashes(b"abc/def"), b"abc/def");
+
+        assert_eq!(strip_leading_slashes(b"/abc"), b"abc");
+        assert_eq!(strip_leading_slashes(b"/abc/"), b"abc/");
+        assert_eq!(strip_leading_slashes(b"/abc/def/"), b"abc/def/");
+        assert_eq!(strip_leading_slashes(b"//abc/def/"), b"abc/def/");
     }
 
     #[test]
@@ -279,5 +358,32 @@ mod tests {
         assert_eq!(stack.next().unwrap(), b"def");
         assert_eq!(stack.next().unwrap(), b"/");
         assert_eq!(stack.next().unwrap(), b"/");
+    }
+
+    #[test]
+    fn test_component_iter() {
+        fn check_it(it: ComponentIter, res: &[&[u8]]) {
+            let mut res = res.iter();
+
+            for component in it {
+                assert_eq!(res.next().cloned(), Some(component));
+            }
+
+            assert_eq!(res.len(), 0, "{:?}", res);
+        }
+
+        assert_eq!(ComponentIter::new(b"").unwrap_err(), libc::ENOENT);
+        assert_eq!(ComponentIter::new(b"\0").unwrap_err(), libc::EINVAL);
+
+        check_it(ComponentIter::new(b"/").unwrap(), &[b"/"]);
+        check_it(ComponentIter::new(b"/abc").unwrap(), &[b"/", b"abc"]);
+        check_it(ComponentIter::new(b"/abc/").unwrap(), &[b"/", b"abc"]);
+
+        check_it(ComponentIter::new(b"./abc/").unwrap(), &[b"abc"]);
+        check_it(ComponentIter::new(b"/./abc/.").unwrap(), &[b"/", b"abc"]);
+        check_it(
+            ComponentIter::new(b"/../abc/..").unwrap(),
+            &[b"/", b"..", b"abc", b".."],
+        );
     }
 }
