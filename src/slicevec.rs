@@ -117,9 +117,11 @@ impl<'a> SliceVec<'a> {
     pub fn make_parent_path(&mut self) -> Result<(), i32> {
         if self.as_ref() == b".." || self.ends_with(b"/..") {
             self.extend_from_slice(b"/..")
-        } else if self.as_ref() == b"." {
-            self.push(b'.')
+        } else if self.is_empty() {
+            self.extend_from_slice(b"..")
         } else {
+            debug_assert_ne!(self.as_ref(), b".");
+
             match self.iter().rposition(|&ch| ch == b'/') {
                 // Only one slash!
                 Some(0) => self.truncate(1),
@@ -128,7 +130,7 @@ impl<'a> SliceVec<'a> {
                 Some(i) => self.truncate(i),
 
                 // No slashes!
-                None => self.replace(b".")?,
+                None => self.clear(),
             }
 
             Ok(())
@@ -268,17 +270,17 @@ mod tests {
         let mut buf = [0; 20];
         let mut buf = SliceVec::empty(&mut buf);
 
-        buf.replace(b".").unwrap();
+        buf.replace(b"").unwrap();
         buf.make_parent_path().unwrap();
         assert_eq!(buf.as_ref(), b"..");
 
         buf.replace(b"abc").unwrap();
         buf.make_parent_path().unwrap();
-        assert_eq!(buf.as_ref(), b".");
+        assert_eq!(buf.as_ref(), b"");
 
         buf.replace(b"abc").unwrap();
         buf.make_parent_path().unwrap();
-        assert_eq!(buf.as_ref(), b".");
+        assert_eq!(buf.as_ref(), b"");
 
         buf.replace(b"/abc/def").unwrap();
         buf.make_parent_path().unwrap();

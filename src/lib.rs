@@ -41,12 +41,11 @@ pub fn realpath_raw(path: &[u8], buf: &mut [u8], flags: RealpathFlags) -> Result
     stack.push(path)?;
 
     let mut buf = SliceVec::empty(buf);
-    buf.push(b'.')?;
 
     let mut links = SymlinkCounter::new();
 
     while let Some(component) = stack.next() {
-        debug_assert!(!buf.is_empty());
+        debug_assert_ne!(buf.as_ref(), b".");
 
         if component == b"/" {
             buf.replace(b"/")?;
@@ -55,7 +54,7 @@ pub fn realpath_raw(path: &[u8], buf: &mut [u8], flags: RealpathFlags) -> Result
         } else {
             let oldlen = buf.len();
 
-            if buf.as_ref() != b"/" {
+            if !matches!(buf.as_ref(), b"/" | b"") {
                 buf.push(b'/')?;
             }
             buf.extend_from_slice(component)?;
@@ -105,7 +104,7 @@ pub fn realpath_raw(path: &[u8], buf: &mut [u8], flags: RealpathFlags) -> Result
 
     let mut tmp = SliceVec::empty(stack.clear());
 
-    if buf.as_ref() == b"." {
+    if buf.as_ref() == b"" {
         util::getcwd(&mut buf)?;
         isdir = true;
     } else if buf.as_ref() == b".." {
@@ -131,13 +130,12 @@ pub fn realpath_raw(path: &[u8], buf: &mut [u8], flags: RealpathFlags) -> Result
 
         buf.insert_from_slice(0, &tmp)?;
     } else if !buf.starts_with(b"/") {
-        if buf.starts_with(b"./") {
-            buf.remove_range(0..1);
-        }
+        debug_assert!(!buf.starts_with(b"./"));
 
         tmp.clear();
         util::getcwd(&mut tmp)?;
         debug_assert!(tmp.len() > 0);
+        tmp.push(b'/')?;
         buf.insert_from_slice(0, &tmp)?;
     }
 
