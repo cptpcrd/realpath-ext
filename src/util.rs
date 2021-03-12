@@ -66,6 +66,11 @@ impl<'a> ComponentStack<'a> {
     }
 
     #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.i == self.buf.len()
+    }
+
+    #[inline]
     pub fn push(&mut self, path: &[u8]) -> Result<(), i32> {
         if path.is_empty() {
             Err(libc::ENOENT)
@@ -208,6 +213,15 @@ pub unsafe fn check_isdir(path: *const u8) -> Result<(), i32> {
         Ok(())
     } else {
         Err(libc::ENOTDIR)
+    }
+}
+
+#[inline]
+pub unsafe fn readlink_empty(path: *const u8) -> Result<(), i32> {
+    if libc::readlink(path as *const _, &mut 0, 1) < 0 {
+        Err(errno_get())
+    } else {
+        Ok(())
     }
 }
 

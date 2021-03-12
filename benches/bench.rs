@@ -5,6 +5,8 @@ use std::path::Path;
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
+use realpath::RealpathFlags;
+
 fn bench(c: &mut Criterion) {
     let exe = env::current_exe().unwrap();
     let cwd = env::current_dir().unwrap();
@@ -32,7 +34,8 @@ fn bench(c: &mut Criterion) {
             path,
             |b, i| {
                 b.iter(|| {
-                    let n = realpath::realpath_raw(i.as_bytes(), &mut buf).unwrap();
+                    let n = realpath::realpath_raw(i.as_bytes(), &mut buf, RealpathFlags::empty())
+                        .unwrap();
                     black_box(&buf[..n]);
                 })
             },
@@ -44,7 +47,7 @@ fn bench(c: &mut Criterion) {
             path,
             |b, i| {
                 b.iter(|| {
-                    let path = realpath::realpath(i).unwrap();
+                    let path = realpath::realpath(i, RealpathFlags::empty()).unwrap();
                     black_box(path);
                 })
             },

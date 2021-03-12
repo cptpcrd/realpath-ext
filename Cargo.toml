@@ -12,6 +12,7 @@ std = []
 
 [dependencies]
 libc = { version = "0.2", default-features = false }
+bitflags = "1.2"
 
 [dev-dependencies]
 criterion = "0.3"

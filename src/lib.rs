@@ -6,20 +6,36 @@ mod util;
 use slicevec::SliceVec;
 use util::{ComponentStack, SymlinkCounter};
 
+bitflags::bitflags! {
+    pub struct RealpathFlags: u32 {
+        /// Allow any component of the given path to be missing, inaccessible, or not a directory
+        /// when it should be.
+        const ALLOW_MISSING = 0x01;
+        /// Allow the last component of the given path to be missing, inaccessible, or not a
+        /// directory when it should be.
+        const ALLOW_LAST_MISSING = 0x02;
+        /// Do not resolve symbolic links as they are encountered.
+        const IGNORE_SYMLINKS = 0x04;
+    }
+}
+
 #[cfg(feature = "std")]
-pub fn realpath<P: AsRef<std::path::Path>>(path: P) -> std::io::Result<std::path::PathBuf> {
+pub fn realpath<P: AsRef<std::path::Path>>(
+    path: P,
+    flags: RealpathFlags,
+) -> std::io::Result<std::path::PathBuf> {
     use std::os::unix::prelude::*;
 
     let mut buf = util::zeroed_vec(libc::PATH_MAX as usize);
 
-    let len = realpath_raw(path.as_ref().as_os_str().as_bytes(), &mut buf)
+    let len = realpath_raw(path.as_ref().as_os_str().as_bytes(), &mut buf, flags)
         .map_err(std::io::Error::from_raw_os_error)?;
     buf.truncate(len);
 
     Ok(std::ffi::OsString::from_vec(buf).into())
 }
 
-pub fn realpath_raw(path: &[u8], buf: &mut [u8]) -> Result<usize, i32> {
+pub fn realpath_raw(path: &[u8], buf: &mut [u8], flags: RealpathFlags) -> Result<usize, i32> {
     let mut stack = [0; libc::PATH_MAX as usize + 100];
     let mut stack = ComponentStack::new(&mut stack);
     stack.push(path)?;
@@ -45,7 +61,17 @@ pub fn realpath_raw(path: &[u8], buf: &mut [u8]) -> Result<usize, i32> {
             buf.extend_from_slice(component)?;
             buf.push(b'\0')?;
 
-            match unsafe { stack.push_readlink(buf.as_ptr()) } {
+            let res = if flags.contains(RealpathFlags::IGNORE_SYMLINKS) {
+                // If IGNORE_SYMLINKS was passed, call readlink() to make sure it exists, but then
+                // act like it isn't a symlink if it is
+                Err(unsafe { util::readlink_empty(buf.as_ptr()) }
+                    .err()
+                    .unwrap_or(libc::EINVAL))
+            } else {
+                unsafe { stack.push_readlink(buf.as_ptr()) }
+            };
+
+            match res {
                 Ok(()) => {
                     links.advance()?;
                     buf.set_len(oldlen);
@@ -53,6 +79,20 @@ pub fn realpath_raw(path: &[u8], buf: &mut [u8]) -> Result<usize, i32> {
 
                 // Not a symlink; just remove the trailing NUL
                 Err(libc::EINVAL) => {
+                    buf.pop();
+                }
+
+                // In these conditions, components of the path are allowed to not exist/not be
+                // accessible/not be a directory
+                Err(libc::ENOENT) | Err(libc::EACCES) | Err(libc::ENOTDIR)
+                    if flags.contains(RealpathFlags::ALLOW_MISSING) =>
+                {
+                    buf.pop();
+                }
+
+                Err(libc::ENOENT) | Err(libc::EACCES)
+                    if flags.contains(RealpathFlags::ALLOW_LAST_MISSING) && stack.is_empty() =>
+                {
                     buf.pop();
                 }
 
@@ -103,7 +143,13 @@ pub fn realpath_raw(path: &[u8], buf: &mut [u8]) -> Result<usize, i32> {
 
     // If a) we haven't proven it's a directory, b) the original path ended with a slash (or `/.`),
     // and c) the path didn't resolve to "/", then we need to check if it's a directory.
-    if !isdir && (path.ends_with(b"/") || path.ends_with(b"/.")) && buf.as_ref() != b"/" {
+    // (Unless one of the ALLOW_*_MISSING flags was passed)
+    if !isdir
+        && (path.ends_with(b"/") || path.ends_with(b"/."))
+        && buf.as_ref() != b"/"
+        && !flags.contains(RealpathFlags::ALLOW_MISSING)
+        && !flags.contains(RealpathFlags::ALLOW_LAST_MISSING)
+    {
         buf.push(b'\0')?;
         unsafe {
             util::check_isdir(buf.as_ptr())?;
