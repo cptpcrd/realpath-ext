@@ -18,6 +18,18 @@ fn realpath<P: AsRef<Path>>(path: P) -> io::Result<PathBuf> {
 
 #[test]
 fn test_success() {
+    let tmpdir = std::env::temp_dir();
+    let exe = std::env::current_exe().unwrap();
+    let cwd = std::env::current_dir().unwrap();
+
+    let mut alt_cwd;
+    if let Some(fname) = cwd.file_name() {
+        alt_cwd = OsString::from("../");
+        alt_cwd.push(fname);
+    } else {
+        alt_cwd = cwd.clone().into();
+    }
+
     for &path in [
         "/",
         ".",
@@ -28,8 +40,10 @@ fn test_success() {
         "///usr/./bin/.",
         "src",
         "/etc/passwd",
-        std::env::temp_dir().to_str().unwrap(),
-        std::env::current_exe().unwrap().to_str().unwrap(),
+        tmpdir.to_str().unwrap(),
+        exe.to_str().unwrap(),
+        cwd.to_str().unwrap(),
+        alt_cwd.to_str().unwrap(),
     ]
     .iter()
     {

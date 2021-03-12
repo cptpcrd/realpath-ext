@@ -56,7 +56,7 @@ pub fn realpath_raw(path: &[u8], buf: &mut [u8]) -> Result<usize, i32> {
             n += 1;
             isdir = true;
         } else {
-            buf.remove_range(0..(n * 3));
+            buf.remove_range(0..(n * 3 - 1));
         }
 
         for _ in 0..n {
