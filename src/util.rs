@@ -323,10 +323,11 @@ pub unsafe fn readlink_empty(path: *const u8) -> Result<(), i32> {
 pub fn getcwd(buf: &mut SliceVec) -> Result<(), i32> {
     buf.set_len(buf.capacity());
 
-    if buf.is_empty() {
-        Err(libc::ENAMETOOLONG)
-    } else if unsafe { libc::getcwd(buf.as_mut_ptr() as *mut _, buf.len()) }.is_null() {
-        Err(errno_get())
+    if unsafe { libc::getcwd(buf.as_mut_ptr() as *mut _, buf.len()) }.is_null() {
+        Err(match errno_get() {
+            libc::EINVAL | libc::ERANGE => libc::ENAMETOOLONG,
+            eno => eno,
+        })
     } else if buf[0] != b'/' {
         Err(libc::ENOENT)
     } else {
@@ -450,6 +451,18 @@ mod tests {
         check_it(
             ComponentIter::new(b"/../abc/..").unwrap(),
             &[b"/", b"..", b"abc", b".."],
+        );
+    }
+
+    #[test]
+    fn test_getcwd_toolong() {
+        assert_eq!(
+            getcwd(&mut SliceVec::empty(&mut [])).unwrap_err(),
+            libc::ENAMETOOLONG
+        );
+        assert_eq!(
+            getcwd(&mut SliceVec::empty(&mut [0])).unwrap_err(),
+            libc::ENAMETOOLONG
         );
     }
 }
