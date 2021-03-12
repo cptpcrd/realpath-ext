@@ -212,6 +212,29 @@ mod tests {
     }
 
     #[test]
+    fn test_remove_range() {
+        let mut buf = [0; 20];
+        let mut buf = SliceVec::empty(&mut buf);
+
+        buf.extend_from_slice(b"abcdefghi").unwrap();
+
+        buf.remove_range(0..2);
+        assert_eq!(buf.as_ref(), b"cdefghi");
+
+        buf.remove_range(0..=1);
+        assert_eq!(buf.as_ref(), b"efghi");
+
+        buf.remove_range(..=1);
+        assert_eq!(buf.as_ref(), b"ghi");
+
+        buf.remove_range(1..);
+        assert_eq!(buf.as_ref(), b"g");
+
+        buf.remove_range(..);
+        assert_eq!(buf.as_ref(), b"");
+    }
+
+    #[test]
     fn test_overflow() {
         let mut buf = [0; 3];
         let mut buf = SliceVec::empty(&mut buf);
