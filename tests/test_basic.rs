@@ -4,7 +4,7 @@ use std::io;
 use std::os::unix::prelude::*;
 use std::path::{Path, PathBuf};
 
-use realpath::{realpath_raw, RealpathFlags};
+use realpath_ext::{realpath_raw, RealpathFlags};
 
 fn realpath<P: AsRef<Path>>(path: P, flags: RealpathFlags) -> io::Result<PathBuf> {
     let mut buf = vec![0; libc::PATH_MAX as usize];
@@ -80,7 +80,7 @@ fn test_enotdir() {
         realpath(&exe, RealpathFlags::empty()).unwrap()
     );
 
-    let mut path2 = exe.clone();
+    let mut path2 = exe;
     path2.push("/a/.");
 
     assert_eq!(

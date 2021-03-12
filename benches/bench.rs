@@ -5,7 +5,7 @@ use std::path::Path;
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
-use realpath::RealpathFlags;
+use realpath_ext::RealpathFlags;
 
 fn bench(c: &mut Criterion) {
     let exe = env::current_exe().unwrap();
@@ -30,12 +30,13 @@ fn bench(c: &mut Criterion) {
         let path = Path::as_os_str(*path);
 
         group.bench_with_input(
-            BenchmarkId::new("realpath::realpath_raw", ident),
+            BenchmarkId::new("realpath_ext::realpath_raw", ident),
             path,
             |b, i| {
                 b.iter(|| {
-                    let n = realpath::realpath_raw(i.as_bytes(), &mut buf, RealpathFlags::empty())
-                        .unwrap();
+                    let n =
+                        realpath_ext::realpath_raw(i.as_bytes(), &mut buf, RealpathFlags::empty())
+                            .unwrap();
                     black_box(&buf[..n]);
                 })
             },
@@ -43,11 +44,11 @@ fn bench(c: &mut Criterion) {
 
         #[cfg(feature = "std")]
         group.bench_with_input(
-            BenchmarkId::new("realpath::realpath", ident),
+            BenchmarkId::new("realpath_ext::realpath", ident),
             path,
             |b, i| {
                 b.iter(|| {
-                    let path = realpath::realpath(i, RealpathFlags::empty()).unwrap();
+                    let path = realpath_ext::realpath(i, RealpathFlags::empty()).unwrap();
                     black_box(path);
                 })
             },
