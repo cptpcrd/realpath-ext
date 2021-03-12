@@ -76,8 +76,7 @@ bitflags::bitflags! {
         /// Allow any component of the given path to be missing, inaccessible, or not a directory
         /// when it should be.
         const ALLOW_MISSING = 0x01;
-        /// Allow the last component of the given path to be missing, inaccessible, or not a
-        /// directory when it should be.
+        /// Allow the last component of the given path to be missing.
         const ALLOW_LAST_MISSING = 0x02;
         /// Do not resolve symbolic links as they are encountered.
         const IGNORE_SYMLINKS = 0x04;
@@ -174,7 +173,7 @@ pub fn realpath_raw(path: &[u8], buf: &mut [u8], flags: RealpathFlags) -> Result
                     buf.pop();
                 }
 
-                Err(libc::ENOENT) | Err(libc::EACCES)
+                Err(libc::ENOENT)
                     if flags.contains(RealpathFlags::ALLOW_LAST_MISSING) && stack.is_empty() =>
                 {
                     buf.pop();
@@ -232,11 +231,12 @@ pub fn realpath_raw(path: &[u8], buf: &mut [u8], flags: RealpathFlags) -> Result
         && buf.as_ref() != b"/"
         && buf.as_ref() != b"//"
         && !flags.contains(RealpathFlags::ALLOW_MISSING)
-        && !flags.contains(RealpathFlags::ALLOW_LAST_MISSING)
     {
         buf.push(b'\0')?;
-        unsafe {
-            util::check_isdir(buf.as_ptr())?;
+        match unsafe { util::check_isdir(buf.as_ptr()) } {
+            Ok(()) => (),
+            Err(libc::ENOENT) if flags.contains(RealpathFlags::ALLOW_LAST_MISSING) => (),
+            Err(eno) => return Err(eno),
         }
         buf.pop();
     }

@@ -117,8 +117,10 @@ fn test_enotdir() {
     );
 
     assert_eq!(
-        realpath(&path, RealpathFlags::ALLOW_LAST_MISSING).unwrap(),
-        realpath(&exe, RealpathFlags::empty()).unwrap()
+        realpath(&path, RealpathFlags::ALLOW_LAST_MISSING)
+            .unwrap_err()
+            .raw_os_error(),
+        Some(libc::ENOTDIR)
     );
 
     let mut path2 = exe;
@@ -167,7 +169,12 @@ fn test_enotdir() {
     );
 
     realpath("/etc/passwd/", RealpathFlags::ALLOW_MISSING).unwrap();
-    realpath("/etc/passwd/", RealpathFlags::ALLOW_LAST_MISSING).unwrap();
+    assert_eq!(
+        realpath("/etc/passwd/", RealpathFlags::ALLOW_LAST_MISSING)
+            .unwrap_err()
+            .raw_os_error(),
+        Some(libc::ENOTDIR)
+    );
     realpath("/etc/passwd/abc", RealpathFlags::ALLOW_MISSING).unwrap();
     assert_eq!(
         realpath("/etc/passwd/abc", RealpathFlags::ALLOW_LAST_MISSING)
