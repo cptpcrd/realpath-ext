@@ -172,7 +172,6 @@ impl<'a> ComponentStack<'a> {
                     if path.first() == Some(&b'/') && path.get(1) != Some(&b'/') {
                         debug_assert!(path.starts_with(b"/"));
                         debug_assert!(!path.starts_with(b"//"));
-                        println!("{:?}", core::str::from_utf8(path));
                         return Some(b"//");
                     } else {
                         debug_assert!(!path.starts_with(b"/") || path.starts_with(b"//"));
