@@ -254,6 +254,8 @@ mod tests {
         stack.push(b"ghi/").unwrap();
         stack.push(b"/jkl").unwrap();
 
+        assert_eq!(stack.push(&[b'a'; 101]).unwrap_err(), libc::ENAMETOOLONG);
+
         assert_eq!(stack.next().unwrap(), b"/");
         assert_eq!(stack.next().unwrap(), b"jkl");
         assert_eq!(stack.next().unwrap(), b"ghi");
