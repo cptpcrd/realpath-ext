@@ -213,29 +213,45 @@ pub fn realpath_raw(path: &[u8], buf: &mut [u8], flags: RealpathFlags) -> Result
         }
     }
 
-    let mut isdir = false;
+    /// If required, check that `buf` refers to a directory.
+    fn maybe_check_isdir(path: &[u8], buf: &mut SliceVec, flags: RealpathFlags) -> Result<(), i32> {
+        if (path.ends_with(b"/") || path.ends_with(b"/."))
+            && !flags.contains(RealpathFlags::ALLOW_MISSING)
+        {
+            buf.push(b'\0')?;
+            match unsafe { util::check_isdir(buf.as_ptr()) } {
+                Ok(()) => (),
+                Err(libc::ENOENT) if flags.contains(RealpathFlags::ALLOW_LAST_MISSING) => (),
+                Err(eno) => return Err(eno),
+            }
+            buf.pop();
+        }
+
+        Ok(())
+    }
 
     let mut tmp = SliceVec::empty(stack.clear());
 
     if buf.as_ref() == b"" {
         util::getcwd(&mut buf)?;
-        isdir = true;
+        // We know `buf` refers to a directory
     } else if buf.as_ref() == b".." {
         util::getcwd(&mut buf)?;
         buf.make_parent_path()?;
-        isdir = true;
+        // We know `buf` refers to a directory
     } else if buf.starts_with(b"../") {
-        tmp.clear();
-        util::getcwd(&mut tmp)?;
-
         let mut n = count_leading_dotdot(&buf);
         if &buf[(n * 3)..] == b".." {
             buf.clear();
             n += 1;
-            isdir = true;
+            // We know `buf` refers to a directory
         } else {
             buf.remove_range(0..(n * 3 - 1));
+            maybe_check_isdir(path, &mut buf, flags)?;
         }
+
+        tmp.clear();
+        util::getcwd(&mut tmp)?;
 
         for _ in 0..n {
             tmp.make_parent_path()?;
@@ -245,29 +261,16 @@ pub fn realpath_raw(path: &[u8], buf: &mut [u8], flags: RealpathFlags) -> Result
     } else if !buf.starts_with(b"/") {
         debug_assert!(!buf.starts_with(b"./"));
 
+        maybe_check_isdir(path, &mut buf, flags)?;
+
         tmp.clear();
         util::getcwd(&mut tmp)?;
         debug_assert!(tmp.len() > 0);
         tmp.push(b'/')?;
         buf.insert_from_slice(0, &tmp)?;
-    }
-
-    // If a) we haven't proven it's a directory, b) the original path ended with a slash (or `/.`),
-    // and c) the path didn't resolve to "/" or "//", then we need to check if it's a directory.
-    // (Unless one of the ALLOW_*_MISSING flags was passed)
-    if !isdir
-        && (path.ends_with(b"/") || path.ends_with(b"/."))
-        && buf.as_ref() != b"/"
-        && buf.as_ref() != b"//"
-        && !flags.contains(RealpathFlags::ALLOW_MISSING)
-    {
-        buf.push(b'\0')?;
-        match unsafe { util::check_isdir(buf.as_ptr()) } {
-            Ok(()) => (),
-            Err(libc::ENOENT) if flags.contains(RealpathFlags::ALLOW_LAST_MISSING) => (),
-            Err(eno) => return Err(eno),
-        }
-        buf.pop();
+    } else if !matches!(buf.as_ref(), b"/" | b"//") {
+        // We don't have to check "/" or "//", but we do have to check other paths
+        maybe_check_isdir(path, &mut buf, flags)?;
     }
 
     Ok(buf.len())
