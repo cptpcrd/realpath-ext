@@ -42,7 +42,7 @@ fn test_success() {
         "..",
         "../..",
         "..//..//../",
-        "//bin",
+        "/bin",
         "///usr/./bin/.",
         "src",
         "/etc/passwd",
@@ -60,6 +60,41 @@ fn test_success() {
 
         realpath(path, RealpathFlags::IGNORE_SYMLINKS).unwrap();
     }
+}
+
+#[test]
+fn test_leading_slashes() {
+    assert_eq!(
+        realpath("/", RealpathFlags::empty()).unwrap().as_os_str(),
+        "/"
+    );
+    assert_eq!(
+        realpath("//", RealpathFlags::empty()).unwrap().as_os_str(),
+        "//"
+    );
+    assert_eq!(
+        realpath("///", RealpathFlags::empty()).unwrap().as_os_str(),
+        "/"
+    );
+
+    assert!(!realpath("/", RealpathFlags::empty())
+        .unwrap()
+        .as_os_str()
+        .to_str()
+        .unwrap()
+        .starts_with("//"));
+    assert!(realpath("//", RealpathFlags::empty())
+        .unwrap()
+        .as_os_str()
+        .to_str()
+        .unwrap()
+        .starts_with("//"));
+    assert!(!realpath("///", RealpathFlags::empty())
+        .unwrap()
+        .as_os_str()
+        .to_str()
+        .unwrap()
+        .starts_with("//"));
 }
 
 #[test]

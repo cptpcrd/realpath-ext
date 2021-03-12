@@ -164,10 +164,20 @@ impl<'a> ComponentStack<'a> {
                 None => return None,
 
                 // The first path starts with a slash
-                Some((&b'/', _)) => {
+                Some((&b'/', path)) => {
+                    // Trim leading slashes from the path
                     self.i += 1;
                     skip_slashes_nul!(self);
-                    return Some(&[b'/']);
+
+                    if path.first() == Some(&b'/') && path.get(1) != Some(&b'/') {
+                        debug_assert!(path.starts_with(b"/"));
+                        debug_assert!(!path.starts_with(b"//"));
+                        println!("{:?}", core::str::from_utf8(path));
+                        return Some(b"//");
+                    } else {
+                        debug_assert!(!path.starts_with(b"/") || path.starts_with(b"//"));
+                        return Some(b"/");
+                    }
                 }
 
                 // So there's at least one path, and it doesn't start with a slash
@@ -229,10 +239,22 @@ impl<'a> Iterator for ComponentIter<'a> {
             // Empty -> nothing left to iterate over
             None => None,
 
-            // Starts with a slash -> trim leading slashes from the new path and return a slash
+            // Starts with a slash
             Some((&b'/', path)) => {
+                // Trim leading slashes from the path
                 self.0 = strip_leading_slashes(path);
-                Some(&[b'/'])
+
+                if path.len() - self.0.len() == 1 {
+                    // This means that at the start of this method, `self.0` started with exactly 2
+                    // slashes. One was removed by split_first(), and the other by
+                    // strip_leading_slashes().
+                    debug_assert!(path.starts_with(b"/"));
+                    debug_assert!(!path.starts_with(b"//"));
+                    Some(b"//")
+                } else {
+                    debug_assert!(!path.starts_with(b"/") || path.starts_with(b"//"));
+                    Some(b"/")
+                }
             }
 
             // So it's not empty and it doesn't start with a slash
@@ -344,7 +366,7 @@ mod tests {
         stack.push(b".").unwrap();
         stack.push(b"/").unwrap();
         stack.push(b"//").unwrap();
-        stack.push(b"/abc/./def/").unwrap();
+        stack.push(b"///abc/./def/").unwrap();
         stack.push(b"ghi/").unwrap();
         stack.push(b"/jkl").unwrap();
 
@@ -356,7 +378,7 @@ mod tests {
         assert_eq!(stack.next().unwrap(), b"/");
         assert_eq!(stack.next().unwrap(), b"abc");
         assert_eq!(stack.next().unwrap(), b"def");
-        assert_eq!(stack.next().unwrap(), b"/");
+        assert_eq!(stack.next().unwrap(), b"//");
         assert_eq!(stack.next().unwrap(), b"/");
     }
 

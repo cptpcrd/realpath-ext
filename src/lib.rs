@@ -49,12 +49,12 @@ pub fn normpath_raw(path: &[u8], buf: &mut [u8]) -> Result<usize, i32> {
     let mut buf = SliceVec::empty(buf);
 
     for component in ComponentIter::new(path)? {
-        if component == b"/" {
-            buf.replace(b"/")?;
+        if component == b"/" || component == b"//" {
+            buf.replace(component)?;
         } else if component == b".." {
             buf.make_parent_path()?;
         } else {
-            if !matches!(buf.as_ref(), b"/" | b"") {
+            if !matches!(buf.as_ref(), b"/" | b"//" | b"") {
                 buf.push(b'/')?;
             }
             buf.extend_from_slice(component)?;
@@ -132,14 +132,14 @@ pub fn realpath_raw(path: &[u8], buf: &mut [u8], flags: RealpathFlags) -> Result
     while let Some(component) = stack.next() {
         debug_assert_ne!(buf.as_ref(), b".");
 
-        if component == b"/" {
-            buf.replace(b"/")?;
+        if component == b"/" || component == b"//" {
+            buf.replace(component)?;
         } else if component == b".." {
             buf.make_parent_path()?;
         } else {
             let oldlen = buf.len();
 
-            if !matches!(buf.as_ref(), b"/" | b"") {
+            if !matches!(buf.as_ref(), b"/" | b"//" | b"") {
                 buf.push(b'/')?;
             }
             buf.extend_from_slice(component)?;
@@ -225,11 +225,12 @@ pub fn realpath_raw(path: &[u8], buf: &mut [u8], flags: RealpathFlags) -> Result
     }
 
     // If a) we haven't proven it's a directory, b) the original path ended with a slash (or `/.`),
-    // and c) the path didn't resolve to "/", then we need to check if it's a directory.
+    // and c) the path didn't resolve to "/" or "//", then we need to check if it's a directory.
     // (Unless one of the ALLOW_*_MISSING flags was passed)
     if !isdir
         && (path.ends_with(b"/") || path.ends_with(b"/."))
         && buf.as_ref() != b"/"
+        && buf.as_ref() != b"//"
         && !flags.contains(RealpathFlags::ALLOW_MISSING)
         && !flags.contains(RealpathFlags::ALLOW_LAST_MISSING)
     {
@@ -279,7 +280,7 @@ mod tests {
         assert_eq!(&buf[..n], b".");
 
         let n = normpath_raw(b"//a/./b/../c/", &mut buf).unwrap();
-        assert_eq!(&buf[..n], b"/a/c");
+        assert_eq!(&buf[..n], b"//a/c");
 
         assert_eq!(normpath_raw(b"", &mut buf).unwrap_err(), libc::ENOENT);
         assert_eq!(normpath_raw(b"\0", &mut buf).unwrap_err(), libc::EINVAL);
@@ -291,9 +292,12 @@ mod tests {
         assert_eq!(normpath("/").unwrap().as_os_str(), "/");
         assert_eq!(normpath(".").unwrap().as_os_str(), ".");
         assert_eq!(normpath("a/..").unwrap().as_os_str(), ".");
-        assert_eq!(normpath("//a/./b/../c/").unwrap().as_os_str(), "/a/c");
+        assert_eq!(normpath("//a/./b/../c/").unwrap().as_os_str(), "//a/c");
 
         assert_eq!(normpath("").unwrap_err().raw_os_error(), Some(libc::ENOENT));
-        assert_eq!(normpath("\0").unwrap_err().raw_os_error(), Some(libc::EINVAL));
+        assert_eq!(
+            normpath("\0").unwrap_err().raw_os_error(),
+            Some(libc::EINVAL)
+        );
     }
 }

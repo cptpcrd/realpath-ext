@@ -123,10 +123,13 @@ impl<'a> SliceVec<'a> {
             debug_assert_ne!(self.as_ref(), b".");
 
             match self.iter().rposition(|&ch| ch == b'/') {
-                // Only one slash!
+                // "/<...>"; truncate to "/"
                 Some(0) => self.truncate(1),
 
-                // Trim after the last slash
+                // "//<...>"; truncate to "//"
+                Some(1) if self[0] == b'/' => self.truncate(2),
+
+                // Trim from the last slash onward
                 Some(i) => self.truncate(i),
 
                 // No slashes!
@@ -293,6 +296,18 @@ mod tests {
         buf.replace(b"/").unwrap();
         buf.make_parent_path().unwrap();
         assert_eq!(buf.as_ref(), b"/");
+
+        buf.replace(b"//abc/def").unwrap();
+        buf.make_parent_path().unwrap();
+        assert_eq!(buf.as_ref(), b"//abc");
+
+        buf.replace(b"//abc").unwrap();
+        buf.make_parent_path().unwrap();
+        assert_eq!(buf.as_ref(), b"//");
+
+        buf.replace(b"//").unwrap();
+        buf.make_parent_path().unwrap();
+        assert_eq!(buf.as_ref(), b"//");
 
         buf.replace(b"..").unwrap();
         buf.make_parent_path().unwrap();
