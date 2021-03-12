@@ -230,6 +230,7 @@ pub fn getcwd(buf: &mut SliceVec) -> Result<(), i32> {
 mod tests {
     use super::*;
 
+    #[cfg(feature = "std")]
     #[test]
     fn test_zeroed_vec() {
         let buf = zeroed_vec(100);
