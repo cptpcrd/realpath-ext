@@ -19,6 +19,7 @@ fn bench(c: &mut Criterion) {
         ("2-parent", "../../".as_ref()),
         ("bin", "/bin".as_ref()),
         ("bin (dir)", "/bin/".as_ref()),
+        ("passwd", "/etc/passwd".as_ref()),
         ("exe", exe.as_ref()),
         ("cwd", cwd.as_ref()),
     ]

@@ -27,6 +27,7 @@ fn test_success() {
         "//bin",
         "///usr/./bin/.",
         "src",
+        "/etc/passwd",
         std::env::temp_dir().to_str().unwrap(),
         std::env::current_exe().unwrap().to_str().unwrap(),
     ]
@@ -41,12 +42,15 @@ fn test_success() {
 
 #[test]
 fn test_enotdir() {
-    let current_exe = std::env::current_exe().unwrap().into_os_string();
-
-    let mut path = current_exe.clone();
+    let mut path = std::env::current_exe().unwrap().into_os_string();
     path.push("/.");
     assert_eq!(
         realpath(path).unwrap_err().raw_os_error(),
+        Some(libc::ENOTDIR)
+    );
+
+    assert_eq!(
+        realpath("/etc/passwd/").unwrap_err().raw_os_error(),
         Some(libc::ENOTDIR)
     );
 }
