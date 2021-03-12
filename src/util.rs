@@ -74,12 +74,19 @@ impl<'a> ComponentStack<'a> {
                 self.i = newi;
                 Ok(())
             } else {
+                if self.buf.get(self.i) == Some(&0) {
+                    self.i += 1;
+                }
                 Err(libc::ENAMETOOLONG)
             }
         }
     }
 
     pub unsafe fn push_readlink(&mut self, path: *const u8) -> Result<(), i32> {
+        if self.i == 0 {
+            return Err(libc::ENAMETOOLONG);
+        }
+
         match libc::readlink(
             path as *const _,
             self.buf.as_mut_ptr() as *mut libc::c_char,
@@ -109,7 +116,7 @@ impl<'a> ComponentStack<'a> {
 
                 debug_assert_ne!(self.buf[len - 1], 0);
 
-                if len >= self.i {
+                if len >= self.i - 1 {
                     Err(libc::ENAMETOOLONG)
                 } else {
                     self.i -= 1;
@@ -123,7 +130,7 @@ impl<'a> ComponentStack<'a> {
         }
     }
 
-    pub fn next<'b>(&'b mut self) -> Option<&'b [u8]> {
+    pub fn next(&mut self) -> Option<&[u8]> {
         macro_rules! skip_slashes_nul {
             ($self:expr) => {{
                 while let Some((&b'/', _)) = $self.buf[$self.i..].split_first() {
@@ -179,7 +186,7 @@ impl<'a> ComponentStack<'a> {
         }
     }
 
-    pub fn clear<'b>(&'b mut self) -> &'b mut [u8] {
+    pub fn clear(&mut self) -> &mut [u8] {
         self.i = self.buf.len();
         &mut self.buf
     }
