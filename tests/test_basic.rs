@@ -1,16 +1,22 @@
 use std::ffi::OsString;
 use std::fs;
-use std::io;
-use std::os::unix::prelude::*;
-use std::path::{Path, PathBuf};
 
-use realpath_ext::{realpath_raw, RealpathFlags};
+use realpath_ext::RealpathFlags;
 
-fn realpath<P: AsRef<Path>>(path: P, flags: RealpathFlags) -> io::Result<PathBuf> {
+#[cfg(feature = "std")]
+use realpath_ext::realpath;
+
+#[cfg(not(feature = "std"))]
+fn realpath<P: AsRef<std::path::Path>>(
+    path: P,
+    flags: RealpathFlags,
+) -> std::io::Result<std::path::PathBuf> {
+    use std::os::unix::prelude::*;
+
     let mut buf = vec![0; libc::PATH_MAX as usize];
 
-    let n = realpath_raw(path.as_ref().as_os_str().as_bytes(), &mut buf, flags)
-        .map_err(io::Error::from_raw_os_error)?;
+    let n = realpath_ext::realpath_raw(path.as_ref().as_os_str().as_bytes(), &mut buf, flags)
+        .map_err(std::io::Error::from_raw_os_error)?;
 
     buf.truncate(n);
     Ok(OsString::from_vec(buf).into())
