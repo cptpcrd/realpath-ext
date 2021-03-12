@@ -7,6 +7,9 @@ use slicevec::SliceVec;
 use util::{ComponentStack, SymlinkCounter};
 
 bitflags::bitflags! {
+    /// Flags that modify path resolution.
+    ///
+    /// These flags were modeled after the options to the GNU `realpath` program.
     pub struct RealpathFlags: u32 {
         /// Allow any component of the given path to be missing, inaccessible, or not a directory
         /// when it should be.
@@ -19,6 +22,10 @@ bitflags::bitflags! {
     }
 }
 
+/// Canonicalize the given path.
+///
+/// This is a wrapper around [`normpath_raw()`] that allocates a buffer; see that function's
+/// documentation for details.
 #[cfg(feature = "std")]
 pub fn realpath<P: AsRef<std::path::Path>>(
     path: P,
@@ -35,6 +42,22 @@ pub fn realpath<P: AsRef<std::path::Path>>(
     Ok(std::ffi::OsString::from_vec(buf).into())
 }
 
+/// Canonicalize the given path.
+///
+/// This function resolves the path specified by `path`, storing the result in `buf`. On success,
+/// the length of the resolved path is returned; on error, an OS error code is returned.
+///
+/// If `flags` is specified as `RealpathFlags::empty()`, this is roughly equivalent to the libc's
+/// `realpath()`. Otherwise, the given `flags` modify aspects of path resolution.
+///
+/// Example usage:
+///
+/// ```
+/// # use realpath_ext::{RealpathFlags, realpath_raw};
+/// let mut buf = [0; libc::PATH_MAX as usize];
+/// let n = realpath_raw(b"///", &mut buf, RealpathFlags::empty()).unwrap();
+/// assert_eq!(&buf[..n], b"/");
+/// ```
 pub fn realpath_raw(path: &[u8], buf: &mut [u8], flags: RealpathFlags) -> Result<usize, i32> {
     let mut stack = [0; libc::PATH_MAX as usize + 100];
     let mut stack = ComponentStack::new(&mut stack);
