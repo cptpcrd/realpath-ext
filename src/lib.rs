@@ -119,6 +119,13 @@ pub fn realpath<P: AsRef<std::path::Path>>(
 /// If `flags` is specified as `RealpathFlags::empty()`, this is roughly equivalent to the libc's
 /// `realpath()`. Otherwise, the given `flags` modify aspects of path resolution.
 ///
+/// This function does not allocate any memory. It will only call the following C functions:
+/// - `sysconf(_SC_SYMLOOP_MAX)`
+/// - `readlink()`
+/// - `stat()` (only if it needs to be verified that the path is a directory)
+/// - `getcwd()` (only if the given `path` is relative and does not contain a reference to an
+///   absolute symbolic link)
+///
 /// Example usage:
 ///
 /// ```
@@ -134,7 +141,8 @@ pub fn realpath<P: AsRef<std::path::Path>>(
 ///
 /// - `ENAMETOOLONG`: Either:
 ///    1. The given `buf` is not long enough to store the canonicalized path, or
-///    2. An intermediate result created by combining the original `path` and any symbolic link
+///    2. The current working directory cannot be represented in a buffer of length `PATH_MAX`, or
+///    3. An intermediate result created by combining the original `path` and any symbolic link
 ///       paths exceeded the system `PATH_MAX`. (Note that the actual limit is slightly higher than
 ///       `PATH_MAX` to account for storage overhead; this should not be relied upon.)
 /// - `EINVAL`: The given `path` contains a NUL byte (not allowed in \*nix paths).
@@ -145,6 +153,10 @@ pub fn realpath<P: AsRef<std::path::Path>>(
 ///   back on a limit of 40 (which is Linux's limit).
 /// - `ENOENT`/`EACCES`/`ENOTDIR`: The given `path` (or a component of it) does not exist, is
 ///   inaccessible, or is not a directory (respectively).
+///
+///   `ENOENT` and `EACCES` may also be returned if `getcwd()` had to be called (see above for the
+///   conditions in which this may be necessary) and the path to the current directory cannot be
+///   obtained.
 ///
 ///   (Note that these errors may be ignored depending on the specified `flags`.)
 /// - `EIO`: An I/O error occurred while interacting with the filesystem.
