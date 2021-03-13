@@ -87,6 +87,9 @@ bitflags::bitflags! {
         /// Allow the last component of the given path to be missing.
         const ALLOW_LAST_MISSING = 0x02;
         /// Do not resolve symbolic links as they are encountered.
+        ///
+        /// Note that if this option is passed, the returned path may not refer to the correct file!
+        /// Certain combinations of `..` and/or symbolic links can cause this.
         const IGNORE_SYMLINKS = 0x04;
     }
 }
