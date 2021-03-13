@@ -115,10 +115,10 @@ impl<'a> SliceVec<'a> {
     }
 
     pub fn make_parent_path(&mut self) -> Result<(), i32> {
-        if self.as_ref() == b".." || self.ends_with(b"/..") {
-            self.extend_from_slice(b"/..")
-        } else if self.is_empty() {
+        if self.is_empty() {
             self.extend_from_slice(b"..")
+        } else if self.as_ref() == b".." || self.ends_with(b"/..") {
+            self.extend_from_slice(b"/..")
         } else {
             debug_assert_ne!(self.as_ref(), b".");
 
