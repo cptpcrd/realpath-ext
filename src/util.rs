@@ -34,12 +34,14 @@ pub struct SymlinkCounter {
 impl SymlinkCounter {
     #[inline]
     pub fn new() -> Self {
-        let max = match unsafe { libc::sysconf(libc::_SC_SYMLOOP_MAX) } {
-            max if (0..=u16::MAX as _).contains(&max) => max as u16,
-            _ => 40,
-        };
+        use core::convert::TryInto;
 
-        Self { max, cur: 0 }
+        Self {
+            max: unsafe { libc::sysconf(libc::_SC_SYMLOOP_MAX) }
+                .try_into()
+                .unwrap_or(40),
+            cur: 0,
+        }
     }
 
     #[inline]
