@@ -31,7 +31,8 @@ pub fn normpath<P: AsRef<std::path::Path>>(path: P) -> std::io::Result<std::path
 ///
 /// This function was designed after Python's `os.path.normpath()`. It will remove `.` elements,
 /// condense extra slashes, and collapse `..` entries. Think of it as a version of
-/// [`realpath_raw()`] that doesn't actually touch the filesystem.
+/// [`realpath_raw()`] that doesn't actually touch the filesystem. (As a consequence of this, if
+/// the given `path` is relative, the returned path will also be relative.)
 ///
 /// Note that because this function doesn't actually touch the filesystem, the returned path may
 /// not refer to the correct file! Certain combinations of `..` and/or symbolic links can cause
@@ -137,6 +138,8 @@ pub fn realpath<P: AsRef<std::path::Path>>(
 /// let n = realpath_raw(b"///", &mut buf, RealpathFlags::empty()).unwrap();
 /// assert_eq!(&buf[..n], b"/");
 /// ```
+///
+/// The returned path will ALWAYS be absolute.
 ///
 /// # Errors
 ///
