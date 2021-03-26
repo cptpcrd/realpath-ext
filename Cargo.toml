@@ -11,18 +11,11 @@ repository = "https://github.com/cptpcrd/realpath-ext"
 [features]
 default = ["std"]
 
-std = []
+std = ["libc/std"]
 
 [dependencies]
 libc = { version = "0.2", default-features = false }
 bitflags = "1.2"
-
-[dev-dependencies]
-criterion = "0.3"
-
-[[bench]]
-name = "bench"
-harness = false
 
 [[bin]]
 name = "realpath-ext"
