@@ -55,7 +55,7 @@ jobs:
         with:
           toolchain: ${{ matrix.toolchain }}
           command: build
-          args: --verbose --target ${{ matrix.target }}
+          args: --verbose --target ${{ matrix.target }} --lib
 
       - name: Run tests
         uses: actions-rs/cargo@v1
