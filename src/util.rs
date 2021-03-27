@@ -72,49 +72,6 @@ impl<'a> ComponentStack<'a> {
         self.i == self.buf.len()
     }
 
-    #[inline]
-    pub fn push(&mut self, path: &[u8]) -> Result<(), i32> {
-        if path.is_empty() {
-            Err(libc::ENOENT)
-        } else if path.contains(&0) {
-            Err(libc::EINVAL)
-        } else {
-            let path = match strip_trailing_slashes(path) {
-                // The path is entirely slashes; use 1 or 2 slashes as appropriate
-                b"" => {
-                    if path.len() == 2 {
-                        b"//".as_ref()
-                    } else {
-                        b"/".as_ref()
-                    }
-                }
-
-                // Use the new path
-                p => p,
-            };
-
-            // If the stack isn't empty, we need to add a NUL byte as "padding".
-            // The exception is that we don't have to do this if a) the first path on the stack
-            // doesn't start with `/` AND b) the path that we're trying to push onto the stack ends
-            // with `/` (because the `/` will insulate it).
-            if self.i != self.buf.len() {
-                self.i -= 1;
-                self.buf[self.i] = 0;
-            }
-
-            if let Some(newi) = self.i.checked_sub(path.len()) {
-                self.buf[newi..self.i].copy_from_slice(path);
-                self.i = newi;
-                Ok(())
-            } else {
-                if self.buf.get(self.i) == Some(&0) {
-                    self.i += 1;
-                }
-                Err(libc::ENAMETOOLONG)
-            }
-        }
-    }
-
     pub unsafe fn push_readlink(&mut self, path: *const u8) -> Result<(), i32> {
         if self.i == 0 {
             return Err(libc::ENAMETOOLONG);
@@ -234,7 +191,7 @@ impl<'a> ComponentStack<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ComponentIter<'a>(&'a [u8]);
 
 impl<'a> ComponentIter<'a> {
@@ -246,6 +203,14 @@ impl<'a> ComponentIter<'a> {
             Err(libc::EINVAL)
         } else {
             Ok(Self(path))
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        match self.0.split_first() {
+            None => true,
+            Some((&b'/', _)) => false,
+            _ => self.clone().next().is_none(),
         }
     }
 }
@@ -345,13 +310,6 @@ pub fn strip_leading_slashes(mut s: &[u8]) -> &[u8] {
     s
 }
 
-pub fn strip_trailing_slashes(mut s: &[u8]) -> &[u8] {
-    while let Some((&b'/', rest)) = s.split_last() {
-        s = rest;
-    }
-    s
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -380,42 +338,15 @@ mod tests {
     }
 
     #[test]
-    fn test_strip_trailing_slashes() {
-        assert_eq!(strip_trailing_slashes(b""), b"");
-        assert_eq!(strip_trailing_slashes(b"/"), b"");
-        assert_eq!(strip_trailing_slashes(b"//"), b"");
-
-        assert_eq!(strip_trailing_slashes(b"abc"), b"abc");
-        assert_eq!(strip_trailing_slashes(b"abc/"), b"abc");
-        assert_eq!(strip_trailing_slashes(b"abc/def"), b"abc/def");
-
-        assert_eq!(strip_trailing_slashes(b"/abc"), b"/abc");
-        assert_eq!(strip_trailing_slashes(b"/abc/"), b"/abc");
-        assert_eq!(strip_trailing_slashes(b"/abc/def/"), b"/abc/def");
-        assert_eq!(strip_trailing_slashes(b"//abc/def//"), b"//abc/def");
-    }
-
-    #[test]
     fn test_component_stack() {
         let mut buf = [0; 100];
         let mut stack = ComponentStack::new(&mut buf);
 
-        assert_eq!(stack.push(b"").unwrap_err(), libc::ENOENT);
-        assert_eq!(stack.push(b"\0").unwrap_err(), libc::EINVAL);
-        assert_eq!(stack.push(&[b'a'; 101]).unwrap_err(), libc::ENAMETOOLONG);
-
         assert_eq!(stack.next(), None);
 
-        stack.push(b".").unwrap();
-        stack.push(b"/").unwrap();
-        stack.push(b"//").unwrap();
-        stack.push(b"///abc/./def/").unwrap();
-        stack.push(b"ghi/").unwrap();
-        stack.push(b"/jkl").unwrap();
-        stack.push(b"mno").unwrap();
-        stack.push(b"pqr/").unwrap();
-
-        assert_eq!(stack.push(&[b'a'; 101]).unwrap_err(), libc::ENAMETOOLONG);
+        let data = b"pqr/\0mno\0/jkl\0ghi/\0///abc/./def/\0//\0/\0.";
+        stack.i = stack.buf.len() - data.len();
+        stack.buf[stack.i..].copy_from_slice(data);
 
         assert_eq!(stack.next().unwrap(), b"pqr");
         assert_eq!(stack.next().unwrap(), b"mno");
@@ -427,6 +358,14 @@ mod tests {
         assert_eq!(stack.next().unwrap(), b"def");
         assert_eq!(stack.next().unwrap(), b"//");
         assert_eq!(stack.next().unwrap(), b"/");
+        assert_eq!(stack.next(), None);
+
+        let data = b"abc";
+        stack.i = stack.buf.len() - data.len();
+        stack.buf[stack.i..].copy_from_slice(data);
+
+        assert_eq!(stack.next().unwrap(), b"abc");
+        assert_eq!(stack.next(), None);
 
         let mut stack = ComponentStack::new(&mut []);
         assert_eq!(
@@ -437,13 +376,15 @@ mod tests {
 
     #[test]
     fn test_component_iter() {
-        fn check_it(it: ComponentIter, res: &[&[u8]]) {
+        fn check_it(mut it: ComponentIter, res: &[&[u8]]) {
             let mut res = res.iter();
 
-            for component in it {
+            while let Some(component) = it.next() {
                 assert_eq!(res.next().cloned(), Some(component));
+                assert_eq!(it.is_empty(), res.len() == 0);
             }
 
+            assert!(it.is_empty());
             assert_eq!(res.len(), 0, "{:?}", res);
         }
 

@@ -148,9 +148,9 @@ pub fn realpath<P: AsRef<std::path::Path>>(
 /// - `ENAMETOOLONG`: Either:
 ///    1. The given `buf` is not long enough to store the canonicalized path, or
 ///    2. The current working directory cannot be represented in a buffer of length `PATH_MAX`, or
-///    3. An intermediate result created by combining the original `path` and any symbolic link
-///       paths exceeded the system `PATH_MAX`. (Note that the actual limit is slightly higher than
-///       `PATH_MAX` to account for storage overhead; this should not be relied upon.)
+///    3. An intermediate result created by combining any symbolic link paths exceeded the system
+///       `PATH_MAX`. (Note that the actual limit is slightly higher than `PATH_MAX` to account for
+///       storage overhead; this should not be relied upon.)
 /// - `EINVAL`: The given `path` contains a NUL byte (not allowed in \*nix paths).
 /// - `ELOOP`: Too many symbolic links were encounted during resolution.
 ///
@@ -169,13 +169,14 @@ pub fn realpath<P: AsRef<std::path::Path>>(
 pub fn realpath_raw(path: &[u8], buf: &mut [u8], flags: RealpathFlags) -> Result<usize, i32> {
     let mut stack = [0; libc::PATH_MAX as usize + 100];
     let mut stack = ComponentStack::new(&mut stack);
-    stack.push(path)?;
+
+    let mut path_it = ComponentIter::new(path)?;
 
     let mut buf = SliceVec::empty(buf);
 
     let mut links = SymlinkCounter::new();
 
-    while let Some(component) = stack.next() {
+    while let Some(component) = stack.next().or_else(|| path_it.next()) {
         debug_assert_ne!(buf.as_ref(), b".");
 
         if component == b"/" || component == b"//" {
@@ -221,7 +222,9 @@ pub fn realpath_raw(path: &[u8], buf: &mut [u8], flags: RealpathFlags) -> Result
                 }
 
                 Err(libc::ENOENT)
-                    if flags.contains(RealpathFlags::ALLOW_LAST_MISSING) && stack.is_empty() =>
+                    if flags.contains(RealpathFlags::ALLOW_LAST_MISSING)
+                        && stack.is_empty()
+                        && path_it.is_empty() =>
                 {
                     buf.pop();
                 }

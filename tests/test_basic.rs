@@ -50,6 +50,7 @@ fn test_success() {
         exe.to_str().unwrap(),
         cwd.to_str().unwrap(),
         alt_cwd.to_str().unwrap(),
+        &"./".repeat(libc::PATH_MAX as usize),
     ]
     .iter()
     {
