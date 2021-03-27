@@ -97,7 +97,7 @@ bitflags::bitflags! {
 
 /// Canonicalize the given path.
 ///
-/// This is a wrapper around [`normpath_raw()`] that allocates a buffer; see that function's
+/// This is a wrapper around [`realpath_raw()`] that allocates a buffer; see that function's
 /// documentation for details.
 #[cfg(feature = "std")]
 pub fn realpath<P: AsRef<std::path::Path>>(
