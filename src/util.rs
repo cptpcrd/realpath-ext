@@ -427,6 +427,12 @@ mod tests {
         assert_eq!(stack.next().unwrap(), b"def");
         assert_eq!(stack.next().unwrap(), b"//");
         assert_eq!(stack.next().unwrap(), b"/");
+
+        let mut stack = ComponentStack::new(&mut []);
+        assert_eq!(
+            unsafe { stack.push_readlink(b"/\0".as_ptr()) }.unwrap_err(),
+            libc::ENAMETOOLONG,
+        );
     }
 
     #[test]
@@ -466,5 +472,25 @@ mod tests {
             getcwd(&mut SliceVec::empty(&mut [0])).unwrap_err(),
             libc::ENAMETOOLONG
         );
+    }
+
+    #[test]
+    fn test_check_isdir() {
+        unsafe {
+            assert_eq!(check_isdir(b"\0".as_ptr()).unwrap_err(), libc::ENOENT);
+            assert_eq!(
+                check_isdir(b"/bin/sh\0".as_ptr()).unwrap_err(),
+                libc::ENOTDIR
+            );
+            check_isdir(b"/\0".as_ptr()).unwrap();
+        }
+    }
+
+    #[test]
+    fn test_readlink_empty() {
+        unsafe {
+            assert_eq!(readlink_empty(b"\0".as_ptr()).unwrap_err(), libc::ENOENT);
+            assert_eq!(readlink_empty(b"/\0".as_ptr()).unwrap_err(), libc::EINVAL);
+        }
     }
 }
