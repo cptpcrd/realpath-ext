@@ -50,6 +50,7 @@ fn test_success() {
         exe.to_str().unwrap(),
         cwd.to_str().unwrap(),
         alt_cwd.to_str().unwrap(),
+        #[cfg(all(target_os = "linux", any(target_env = "gnu", target_env = "")))]
         &"./".repeat(libc::PATH_MAX as usize),
     ]
     .iter()
