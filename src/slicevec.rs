@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use core::fmt;
 use core::ops::{Bound, Deref, DerefMut, RangeBounds};
 
