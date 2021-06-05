@@ -329,6 +329,9 @@ mod tests {
         let n = normpath_raw(b".", &mut buf).unwrap();
         assert_eq!(&buf[..n], b".");
 
+        let n = normpath_raw(b"a", &mut buf).unwrap();
+        assert_eq!(&buf[..n], b"a");
+
         let n = normpath_raw(b"a/..", &mut buf).unwrap();
         assert_eq!(&buf[..n], b".");
 
