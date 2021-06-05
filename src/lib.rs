@@ -271,7 +271,6 @@ pub fn realpath_raw(path: &[u8], buf: &mut [u8], flags: RealpathFlags) -> Result
             maybe_check_isdir(path, &mut buf, flags)?;
         }
 
-        tmp.clear();
         util::getcwd(&mut tmp)?;
 
         for _ in 0..n {
