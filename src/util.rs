@@ -32,6 +32,9 @@ pub struct SymlinkCounter {
 }
 
 impl SymlinkCounter {
+    // This is Linux's limit (sysconf(_SC_SYMLOOP_MAX) always fails on glibc, so we need a fallback)
+    const DEFAULT_SYMLOOP_MAX: u16 = 40;
+
     #[inline]
     pub fn new() -> Self {
         use core::convert::TryInto;
@@ -39,7 +42,7 @@ impl SymlinkCounter {
         Self {
             max: unsafe { libc::sysconf(libc::_SC_SYMLOOP_MAX) }
                 .try_into()
-                .unwrap_or(40),
+                .unwrap_or(Self::DEFAULT_SYMLOOP_MAX),
             cur: 0,
         }
     }
