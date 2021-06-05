@@ -16,7 +16,7 @@ pub fn normpath<P: AsRef<std::path::Path>>(path: P) -> std::io::Result<std::path
 
     let path = path.as_ref().as_os_str().as_bytes();
 
-    let mut buf = util::zeroed_vec(path.len());
+    let mut buf = vec![0; path.len()];
 
     let len = normpath_raw(path, &mut buf).map_err(std::io::Error::from_raw_os_error)?;
     buf.truncate(len);
@@ -106,7 +106,7 @@ pub fn realpath<P: AsRef<std::path::Path>>(
 ) -> std::io::Result<std::path::PathBuf> {
     use std::os::unix::prelude::*;
 
-    let mut buf = util::zeroed_vec(libc::PATH_MAX as usize);
+    let mut buf = vec![0; libc::PATH_MAX as usize];
 
     let len = realpath_raw(path.as_ref().as_os_str().as_bytes(), &mut buf, flags)
         .map_err(std::io::Error::from_raw_os_error)?;
