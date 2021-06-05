@@ -133,17 +133,17 @@ impl<'a> ComponentStack<'a> {
                 None => return None,
 
                 // The first path starts with a slash
-                Some((&b'/', path)) => {
+                Some((&b'/', rest)) => {
                     // Trim leading slashes from the path
                     self.i += 1;
                     skip_slashes_nul!(self);
 
-                    if path.first() == Some(&b'/') && path.get(1) != Some(&b'/') {
-                        debug_assert!(path.starts_with(b"/"));
-                        debug_assert!(!path.starts_with(b"//"));
+                    if rest.first() == Some(&b'/') && rest.get(1) != Some(&b'/') {
+                        debug_assert!(rest.starts_with(b"/"));
+                        debug_assert!(!rest.starts_with(b"//"));
                         return Some(b"//");
                     } else {
-                        debug_assert!(!path.starts_with(b"/") || path.starts_with(b"//"));
+                        debug_assert!(!rest.starts_with(b"/") || rest.starts_with(b"//"));
                         return Some(b"/");
                     }
                 }
@@ -216,19 +216,19 @@ impl<'a> Iterator for ComponentIter<'a> {
             None => None,
 
             // Starts with a slash
-            Some((&b'/', path)) => {
+            Some((&b'/', rest)) => {
                 // Trim leading slashes from the path
-                self.0 = strip_leading_slashes(path);
+                self.0 = strip_leading_slashes(rest);
 
-                if path.len() - self.0.len() == 1 {
+                if rest.len() - self.0.len() == 1 {
                     // This means that at the start of this method, `self.0` started with exactly 2
                     // slashes. One was removed by split_first(), and the other by
                     // strip_leading_slashes().
-                    debug_assert!(path.starts_with(b"/"));
-                    debug_assert!(!path.starts_with(b"//"));
+                    debug_assert!(rest.starts_with(b"/"));
+                    debug_assert!(!rest.starts_with(b"//"));
                     Some(b"//")
                 } else {
-                    debug_assert!(!path.starts_with(b"/") || path.starts_with(b"//"));
+                    debug_assert!(!rest.starts_with(b"/") || rest.starts_with(b"//"));
                     Some(b"/")
                 }
             }
