@@ -1,17 +1,8 @@
 use crate::slicevec::SliceVec;
 
-#[cfg(any(target_os = "linux", target_os = "dragonfly"))]
-pub use libc::__errno_location as errno_ptr;
-
-#[cfg(any(target_os = "freebsd", target_os = "macos"))]
-pub use libc::__error as errno_ptr;
-
-#[cfg(any(target_os = "android", target_os = "netbsd", target_os = "openbsd"))]
-pub use libc::__errno as errno_ptr;
-
 #[inline]
 pub fn errno_get() -> i32 {
-    unsafe { *errno_ptr() }
+    errno::errno().0
 }
 
 #[derive(Debug)]
