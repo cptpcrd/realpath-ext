@@ -15,6 +15,7 @@ std = []
 
 [dependencies]
 libc = { version = "0.2", default-features = false }
+errno = { version = "0.2.8", default-features = false }
 bitflags = "1.2"
 
 [dev-dependencies]
