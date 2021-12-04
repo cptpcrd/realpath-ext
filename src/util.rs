@@ -378,6 +378,10 @@ mod tests {
         check_it(ComponentIter::new(b"/abc").unwrap(), &[b"/", b"abc"]);
         check_it(ComponentIter::new(b"/abc/").unwrap(), &[b"/", b"abc"]);
 
+        check_it(ComponentIter::new(b"//").unwrap(), &[b"//"]);
+        check_it(ComponentIter::new(b"//abc").unwrap(), &[b"//", b"abc"]);
+        check_it(ComponentIter::new(b"//abc/").unwrap(), &[b"//", b"abc"]);
+
         check_it(ComponentIter::new(b"./abc/").unwrap(), &[b"abc"]);
         check_it(ComponentIter::new(b"/./abc/.").unwrap(), &[b"/", b"abc"]);
         check_it(
