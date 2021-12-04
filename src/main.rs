@@ -1,6 +1,10 @@
 use std::env;
 use std::io::prelude::*;
+
+#[cfg(target_family = "unix")]
 use std::os::unix::prelude::*;
+#[cfg(target_os = "wasi")]
+use std::os::wasi::prelude::*;
 
 use realpath_ext::{realpath, RealpathFlags};
 

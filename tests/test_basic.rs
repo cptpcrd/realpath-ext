@@ -11,7 +11,10 @@ fn realpath<P: AsRef<std::path::Path>>(
     path: P,
     flags: RealpathFlags,
 ) -> std::io::Result<std::path::PathBuf> {
+    #[cfg(target_family = "unix")]
     use std::os::unix::prelude::*;
+    #[cfg(target_os = "wasi")]
+    use std::os::wasi::prelude::*;
 
     let mut buf = vec![0; libc::PATH_MAX as usize];
 

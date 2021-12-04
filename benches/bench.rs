@@ -1,7 +1,11 @@
 use std::env;
 use std::fs;
-use std::os::unix::prelude::*;
 use std::path::Path;
+
+#[cfg(target_family = "unix")]
+use std::os::unix::prelude::*;
+#[cfg(target_os = "wasi")]
+use std::os::wasi::prelude::*;
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 

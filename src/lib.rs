@@ -6,13 +6,21 @@ mod util;
 use slicevec::SliceVec;
 use util::{ComponentIter, ComponentStack, SymlinkCounter};
 
+#[cfg(target_family = "unix")]
+const PATH_MAX: usize = libc::PATH_MAX as usize;
+#[cfg(target_os = "wasi")]
+const PATH_MAX: usize = 4096;
+
 /// "Normalize" the given path.
 ///
 /// This is a wrapper around [`normpath_raw()`] that allocates a buffer; see that function's
 /// documentation for details.
 #[cfg(feature = "std")]
 pub fn normpath<P: AsRef<std::path::Path>>(path: P) -> std::io::Result<std::path::PathBuf> {
+    #[cfg(target_family = "unix")]
     use std::os::unix::prelude::*;
+    #[cfg(target_os = "wasi")]
+    use std::os::wasi::prelude::*;
 
     let path = path.as_ref().as_os_str().as_bytes();
 
@@ -104,9 +112,12 @@ pub fn realpath<P: AsRef<std::path::Path>>(
     path: P,
     flags: RealpathFlags,
 ) -> std::io::Result<std::path::PathBuf> {
+    #[cfg(target_family = "unix")]
     use std::os::unix::prelude::*;
+    #[cfg(target_os = "wasi")]
+    use std::os::wasi::prelude::*;
 
-    let mut buf = vec![0; libc::PATH_MAX as usize];
+    let mut buf = vec![0; PATH_MAX];
 
     let len = realpath_raw(path.as_ref().as_os_str().as_bytes(), &mut buf, flags)
         .map_err(std::io::Error::from_raw_os_error)?;
@@ -167,7 +178,7 @@ pub fn realpath<P: AsRef<std::path::Path>>(
 ///   (Note that these errors may be ignored depending on the specified `flags`.)
 /// - `EIO`: An I/O error occurred while interacting with the filesystem.
 pub fn realpath_raw(path: &[u8], buf: &mut [u8], flags: RealpathFlags) -> Result<usize, i32> {
-    let mut stack = [0; libc::PATH_MAX as usize + 100];
+    let mut stack = [0; PATH_MAX + 100];
     let mut stack = ComponentStack::new(&mut stack);
 
     let mut path_it = ComponentIter::new(path)?;

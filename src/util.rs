@@ -273,7 +273,14 @@ pub unsafe fn readlink_empty(path: *const u8) -> Result<(), i32> {
 pub fn getcwd(buf: &mut SliceVec) -> Result<(), i32> {
     buf.set_len(buf.capacity());
 
-    if unsafe { libc::getcwd(buf.as_mut_ptr() as *mut _, buf.len()) }.is_null() {
+    #[cfg(target_family = "unix")]
+    use libc::getcwd;
+    #[cfg(target_os = "wasi")]
+    extern "C" {
+        fn getcwd(buf: *mut libc::c_char, size: libc::size_t) -> *mut libc::c_char;
+    }
+
+    if unsafe { getcwd(buf.as_mut_ptr() as *mut _, buf.len()) }.is_null() {
         Err(match errno_get() {
             libc::EINVAL | libc::ERANGE => libc::ENAMETOOLONG,
             eno => eno,
