@@ -291,6 +291,7 @@ pub fn realpath_raw(path: &[u8], buf: &mut [u8], flags: RealpathFlags) -> Result
         buf.insert_from_slice(0, &tmp)?;
     } else if !buf.starts_with(b"/") {
         debug_assert!(!buf.starts_with(b"./"));
+        debug_assert_ne!(buf.as_ref(), b".");
 
         maybe_check_isdir(path, &mut buf, flags)?;
 
