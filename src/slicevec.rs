@@ -31,7 +31,7 @@ impl<'a> SliceVec<'a> {
 
     #[inline]
     pub fn set_len(&mut self, new_len: usize) {
-        assert!(self.len <= self.capacity());
+        assert!(new_len <= self.capacity());
         self.len = new_len;
     }
 
