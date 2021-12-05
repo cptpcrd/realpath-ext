@@ -428,4 +428,16 @@ mod tests {
             assert_eq!(readlink_empty(b"/\0".as_ptr()).unwrap_err(), libc::EINVAL);
         }
     }
+
+    #[test]
+    fn test_symlinkcounter() {
+        let mut links = SymlinkCounter::new();
+        assert!(links.max >= 8); // Required by POSIX (_POSIX_SYMLOOP_MAX is 8)
+        assert!(links.max <= 400); // This is a VERY large value... something must be wrong
+
+        for _ in 0..links.max {
+            links.advance().unwrap();
+        }
+        assert_eq!(links.advance(), Err(libc::ELOOP));
+    }
 }
