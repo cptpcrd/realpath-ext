@@ -216,7 +216,8 @@ pub fn realpath_raw(path: &[u8], buf: &mut [u8], flags: RealpathFlags) -> Result
             match res {
                 Ok(()) => {
                     links.advance()?;
-                    buf.set_len(oldlen);
+                    debug_assert!(buf.len() > oldlen);
+                    buf.truncate(oldlen);
                 }
 
                 // Not a symlink; just remove the trailing NUL

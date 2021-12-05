@@ -271,6 +271,10 @@ pub unsafe fn readlink_empty(path: *const u8) -> Result<(), i32> {
 }
 
 pub fn getcwd(buf: &mut SliceVec) -> Result<(), i32> {
+    if buf.capacity() == 0 {
+        // getcwd() is just going to fail with EINVAL; bail out early
+        return Err(libc::ENAMETOOLONG);
+    }
     buf.set_len(buf.capacity());
 
     #[cfg(target_family = "unix")]
@@ -287,9 +291,12 @@ pub fn getcwd(buf: &mut SliceVec) -> Result<(), i32> {
         })
     } else if buf[0] != b'/' {
         Err(libc::ENOENT)
-    } else {
-        buf.set_len(buf.iter().position(|&ch| ch == 0).unwrap());
+    } else if let Some(i) = buf.iter().position(|&ch| ch == 0) {
+        buf.set_len(i);
         Ok(())
+    } else {
+        // The kernel returned bad data
+        Err(libc::EIO)
     }
 }
 
