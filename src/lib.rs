@@ -278,8 +278,8 @@ pub fn realpath_raw(path: &[u8], buf: &mut [u8], flags: RealpathFlags) -> Result
             n += 1;
             // We know `buf` refers to a directory
         } else {
-            buf.remove_range(0..(n * 3 - 1));
             maybe_check_isdir(path, &mut buf, flags)?;
+            buf.remove_range(0..(n * 3 - 1));
         }
 
         util::getcwd(&mut tmp)?;
