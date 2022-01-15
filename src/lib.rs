@@ -103,6 +103,99 @@ bitflags::bitflags! {
     }
 }
 
+/// A "builder" that allows customizing options to `realpath_raw()`.
+///
+/// `realpath(path, flags)` is equivalent to `RealpathBuilder::new().flags(flags).realpath(path)`.
+#[cfg(feature = "std")]
+#[derive(Clone)]
+pub struct RealpathBuilder {
+    max_len: usize,
+    flags: RealpathFlags,
+}
+
+#[cfg(feature = "std")]
+impl RealpathBuilder {
+    /// Create a new "builder".
+    ///
+    /// The returned builder has its `flags` empty. `max_size` will be set to 32768 on WASI, and
+    /// `PATH_MAX` on other OSes.
+    #[inline]
+    pub fn new() -> Self {
+        Self {
+            max_len: if cfg!(target_os = "wasi") {
+                32768
+            } else {
+                PATH_MAX
+            },
+            flags: RealpathFlags::empty(),
+        }
+    }
+
+    /// Set the maximum path length allowed before failing with `ENAMETOOLONG`.
+    ///
+    /// Note: In some cases, [`Self::realpath()`] may allocate a smaller buffer than this, then
+    /// expand it and retry if resolution fails with `ENAMETOOLONG`.
+    #[inline]
+    pub fn max_len(&mut self, max_len: usize) -> &mut Self {
+        self.max_len = max_len;
+        self
+    }
+
+    /// Set the flags used to modify path resolution.
+    ///
+    /// See [`RealpathFlags`] for more information.
+    #[inline]
+    pub fn flags(&mut self, flags: RealpathFlags) -> &mut Self {
+        self.flags = flags;
+        self
+    }
+
+    /// Canonicalize the given path.
+    pub fn realpath<P: AsRef<std::path::Path>>(
+        &self,
+        path: P,
+    ) -> std::io::Result<std::path::PathBuf> {
+        #[cfg(target_family = "unix")]
+        use std::os::unix::prelude::*;
+        #[cfg(target_os = "wasi")]
+        use std::os::wasi::prelude::*;
+
+        let len = PATH_MAX.min(self.max_len);
+        let mut buf = vec![0; len];
+        let mut tmp = vec![0; len + 100];
+
+        loop {
+            match realpath_raw_inner(
+                path.as_ref().as_os_str().as_bytes(),
+                &mut buf,
+                &mut tmp,
+                self.flags,
+            ) {
+                Ok(len) => {
+                    buf.truncate(len);
+                    return Ok(std::ffi::OsString::from_vec(buf).into());
+                }
+
+                Err(libc::ENAMETOOLONG) if buf.len() < self.max_len => {
+                    // Resize until we hit the maximum limit
+                    let new_len = buf.len().saturating_mul(2).min(self.max_len);
+                    buf.resize(new_len, 0);
+                    tmp.resize(new_len + 100, 0);
+                }
+                Err(eno) => return Err(std::io::Error::from_raw_os_error(eno)),
+            }
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl Default for RealpathBuilder {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Canonicalize the given path.
 ///
 /// This is a wrapper around [`realpath_raw()`] that allocates a buffer; see that function's
@@ -112,18 +205,71 @@ pub fn realpath<P: AsRef<std::path::Path>>(
     path: P,
     flags: RealpathFlags,
 ) -> std::io::Result<std::path::PathBuf> {
-    #[cfg(target_family = "unix")]
-    use std::os::unix::prelude::*;
-    #[cfg(target_os = "wasi")]
-    use std::os::wasi::prelude::*;
+    RealpathBuilder::new().flags(flags).realpath(path)
+}
 
-    let mut buf = vec![0; PATH_MAX];
+/// A "builder" that allows customizing options to `realpath_raw()`.
+///
+/// `realpath_raw(path, buf, flags)` is equivalent to
+/// `RealpathRawBuilder::new().flags(flags).realpath_raw(path, buf)`.
+pub struct RealpathRawBuilder<'a> {
+    flags: RealpathFlags,
+    tmp: Option<&'a mut [u8]>,
+}
 
-    let len = realpath_raw(path.as_ref().as_os_str().as_bytes(), &mut buf, flags)
-        .map_err(std::io::Error::from_raw_os_error)?;
-    buf.truncate(len);
+impl<'a> RealpathRawBuilder<'a> {
+    /// Create a new "builder".
+    ///
+    /// The returned builder has its `flags` empty, and `temp_buffer` set to `None`.
+    #[inline]
+    pub fn new() -> Self {
+        Self {
+            flags: RealpathFlags::empty(),
+            tmp: None,
+        }
+    }
 
-    Ok(std::ffi::OsString::from_vec(buf).into())
+    /// Set the flags used to modify path resolution.
+    ///
+    /// See [`RealpathFlags`] for more information.
+    #[inline]
+    pub fn flags(&mut self, flags: RealpathFlags) -> &mut Self {
+        self.flags = flags;
+        self
+    }
+
+    /// Set the temporary buffer used to store intermediate results.
+    ///
+    /// It's recommended to make this buffer somewhat larger than the `buf` passed to
+    /// [`Self::realpath_raw()`], since the current algorithm requires a bit of overhead in the
+    /// temporary buffer.
+    ///
+    /// If `tmp` is `None` (default), a temporary buffer of length `PATH_MAX + 100` will be
+    /// allocated on the stack.
+    #[inline]
+    pub fn temp_buffer(&mut self, tmp: Option<&'a mut [u8]>) -> &mut Self {
+        self.tmp = tmp;
+        self
+    }
+
+    /// Canonicalize the path given by `path` into the buffer given by `buf`.
+    ///
+    /// `path`, `buf`, and the return value have the same meanings as for [`realpath_raw()`].
+    #[inline]
+    pub fn realpath_raw(&mut self, path: &[u8], buf: &mut [u8]) -> Result<usize, i32> {
+        if let Some(tmp) = self.tmp.as_mut() {
+            realpath_raw_inner(path, buf, tmp, self.flags)
+        } else {
+            realpath_raw(path, buf, self.flags)
+        }
+    }
+}
+
+impl Default for RealpathRawBuilder<'_> {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Canonicalize the given path.
@@ -178,8 +324,17 @@ pub fn realpath<P: AsRef<std::path::Path>>(
 ///   (Note that these errors may be ignored depending on the specified `flags`.)
 /// - `EIO`: An I/O error occurred while interacting with the filesystem.
 pub fn realpath_raw(path: &[u8], buf: &mut [u8], flags: RealpathFlags) -> Result<usize, i32> {
-    let mut stack = [0; PATH_MAX + 100];
-    let mut stack = ComponentStack::new(&mut stack);
+    let mut tmp = [0u8; PATH_MAX + 100];
+    realpath_raw_inner(path, buf, &mut tmp, flags)
+}
+
+fn realpath_raw_inner(
+    path: &[u8],
+    buf: &mut [u8],
+    tmp: &mut [u8],
+    flags: RealpathFlags,
+) -> Result<usize, i32> {
+    let mut stack = ComponentStack::new(tmp);
 
     let mut path_it = ComponentIter::new(path)?;
 
