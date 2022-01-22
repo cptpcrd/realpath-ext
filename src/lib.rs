@@ -133,8 +133,11 @@ impl RealpathBuilder {
 
     /// Set the maximum path length allowed before failing with `ENAMETOOLONG`.
     ///
-    /// Note: In some cases, [`Self::realpath()`] may allocate a smaller buffer than this, then
-    /// expand it and retry if resolution fails with `ENAMETOOLONG`.
+    /// Generally speaking, this is only useful if the OS supports paths longer than `PATH_MAX` (for
+    /// example, this is the case on WASI).
+    ///
+    /// Note: In some cases, [`Self::realpath()`] may allocate a smaller buffer than this length,
+    /// then expand it and retry if resolution fails with `ENAMETOOLONG`.
     #[inline]
     pub fn max_len(&mut self, max_len: usize) -> &mut Self {
         self.max_len = max_len;
@@ -198,8 +201,11 @@ impl Default for RealpathBuilder {
 
 /// Canonicalize the given path.
 ///
-/// This is a wrapper around [`realpath_raw()`] that allocates a buffer; see that function's
-/// documentation for details.
+/// This is effectively a wrapper around [`realpath_raw()`] that allocates a buffer; see that
+/// function's documentation for details.
+///
+/// Note that on non-WASI OSes, this function is limited to resolving paths of `PATH_MAX` bytes.
+/// See [`RealpathBuilder`] for more information.
 #[cfg(feature = "std")]
 pub fn realpath<P: AsRef<std::path::Path>>(
     path: P,
