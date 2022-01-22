@@ -209,3 +209,39 @@ fn test_enoent() {
         Some(libc::ENOENT)
     );
 }
+
+#[test]
+fn test_builders() {
+    // Resolving a path with a max length that's too short should fail
+    #[cfg(feature = "std")]
+    assert_eq!(
+        realpath_ext::RealpathBuilder::default()
+            .max_len(10)
+            .realpath("/etc/passwd")
+            .unwrap_err()
+            .raw_os_error(),
+        Some(libc::ENAMETOOLONG),
+    );
+
+    // Resolving a path with a buffer that's too short should fail
+    let mut buf = vec![0u8; 10];
+    assert_eq!(
+        realpath_ext::RealpathRawBuilder::default().realpath_raw(b"/etc/passwd", &mut buf),
+        Err(libc::ENAMETOOLONG),
+    );
+
+    // Try some paths that are commonly symlinks
+    for path in ["/bin", "/lib", "/tmp", "/var/run"].iter() {
+        if std::path::Path::new(path).is_symlink() {
+            let mut buf = vec![0u8; 1000];
+            // This is NOT enough to handle symlinks
+            let mut tmp = vec![0u8; 1];
+            assert_eq!(
+                realpath_ext::RealpathRawBuilder::new()
+                    .temp_buffer(Some(&mut tmp))
+                    .realpath_raw(path.as_bytes(), &mut buf),
+                Err(libc::ENAMETOOLONG),
+            );
+        }
+    }
+}
