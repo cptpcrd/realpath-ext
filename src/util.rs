@@ -170,7 +170,7 @@ impl<'a> ComponentStack<'a> {
 
     pub fn clear(&mut self) -> &mut [u8] {
         self.i = self.buf.len();
-        &mut self.buf
+        self.buf
     }
 }
 
